@@ -24,7 +24,7 @@ cronjob_schedule: "0 0 * * *"
 useExistingSecret:
 
 secrets:
-  # -- (string) The Developers Italia API compatible PASETO bearer token
+  # -- (string) The open-catalog-api PASETO bearer token
   apiBearerToken:
   # -- (string) The GitHub token to use for the GitHub API requests
   githubToken:

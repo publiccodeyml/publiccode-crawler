@@ -3,7 +3,7 @@ apiVersion: v2
 
 name: publiccode-crawler
 description: |
-   publiccode.yml crawler for the Open Source software catalog of Developers Italia
+   publiccode.yml crawler for open-catalog-api software catalogs
 
 type: application
 

@@ -1,16 +1,12 @@
-# publiccode.yml crawler for the software catalog of Developers Italia
+# publiccode.yml crawler
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/italia/publiccode-crawler/v4)](https://goreportcard.com/report/github.com/italia/publiccode-crawler/v4)
-[![Join the #publiccode channel](https://img.shields.io/badge/Slack%20channel-%23publiccode-blue.svg?logo=slack)](https://developersitalia.slack.com/messages/CAM3F785T)
-[![Get invited](https://slack.developers.italia.it/badge.svg)](https://slack.developers.italia.it/)
 
 ## Description
 
-Developers Italia provides [a catalog of Free and Open Source](https://developers.italia.it/en/search)
-software aimed to Public Administrations.
-
 `publiccode-crawler` retrieves the `publiccode.yml` files from the
-repositories of publishers found in the [Developers Italia API](https://github.com/italia/developers-italia-api).
+repositories of the publishers listed in an
+[open-catalog-api](https://github.com/publiccodeyml/open-catalog-api) instance.
 
 ## Setup and deployment processes
 
@@ -68,14 +64,11 @@ Ex. `publiccode-crawler crawl-software https://api.developers.italia.it/v1/softw
 
 ## See also
 
-* [developers-italia-api](https://github.com/italia/developers-italia-api): the API
+* [open-catalog-api](https://github.com/publiccodeyml/open-catalog-api): the API
   used to store the results of the crawling
 * [publiccode-parser-go](https://github.com/italia/publiccode-parser-go): the Go
   package for parsing publiccode.yml files
 
 ## Authors
 
-[Developers Italia](https://developers.italia.it) is a project by
-[AgID](https://www.agid.gov.it/) and the
-[Italian Digital Team](https://teamdigitale.governo.it/), which developed the
-crawler and maintains this repository.
+The version control system provides attribution for specific lines of code.
