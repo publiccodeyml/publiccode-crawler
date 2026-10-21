@@ -34,7 +34,7 @@ docker build .
 or use the image published to DockerHub:
 
 ```console
-docker run -it italia/publiccode-crawler
+docker run -it publiccodeyml/publiccode-crawler
 ```
 
 ## Commands

@@ -1,7 +1,7 @@
 ---
 
 image:
-  repository: docker.io/italia/publiccode-crawler
+  repository: docker.io/publiccodeyml/publiccode-crawler
   tag: latest
   pullPolicy: Always
 
