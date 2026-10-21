@@ -66,7 +66,7 @@ Ex. `publiccode-crawler crawl-software https://api.developers.italia.it/v1/softw
 
 * [open-catalog-api](https://github.com/publiccodeyml/open-catalog-api): the API
   used to store the results of the crawling
-* [publiccode-parser-go](https://github.com/italia/publiccode-parser-go): the Go
+* [libpubliccode](https://github.com/publiccodeyml/libpubliccode): the Go
   package for parsing publiccode.yml files
 
 ## Authors
