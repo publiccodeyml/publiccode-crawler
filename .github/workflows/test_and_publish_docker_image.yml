@@ -48,7 +48,7 @@ jobs:
       - name: Get Docker image tags
         id: image_tags
         run: |
-          IMAGE=italia/publiccode-crawler
+          IMAGE=publiccodeyml/publiccode-crawler
 
           TAGS=${IMAGE}:latest
           TAGS="$TAGS,${IMAGE}:${GITHUB_SHA::8}"
