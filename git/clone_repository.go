@@ -54,7 +54,18 @@ func CloneRepository(hostname, name, gitURL, index string) error {
 
 	cmd := exec.CommandContext(context.Background(), "git", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
+		if existing == nil {
+			return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
+		}
+
+		if err := os.RemoveAll(tmpDir); err != nil {
+			return fmt.Errorf("cannot remove incomplete clone of %s: %w", gitURL, err)
+		}
+
+		cmd = exec.CommandContext(context.Background(), "git", "clone", "--filter=blob:none", "--bare", gitURL, tmpDir)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
+		}
 	}
 
 	repository, err := gogit.PlainOpen(tmpDir)
@@ -331,25 +342,49 @@ func mergeTagEntries(existing map[dayKey]uint32, tags []*object.Commit, firstEnt
 }
 
 func extractAllCommits(repository *gogit.Repository) ([]*object.Commit, error) {
-	var commits []*object.Commit
-
 	ref, err := repository.Head()
 	if err != nil {
 		return nil, err
 	}
 
-	cIter, err := repository.Log(&gogit.LogOptions{From: ref.Hash()})
+	shallow, err := repository.Storer.Shallow()
 	if err != nil {
 		return nil, err
 	}
 
-	err = cIter.ForEach(func(commit *object.Commit) error {
+	boundaries := make(map[plumbing.Hash]struct{}, len(shallow))
+	for _, hash := range shallow {
+		boundaries[hash] = struct{}{}
+	}
+
+	var commits []*object.Commit
+
+	pending := []plumbing.Hash{ref.Hash()}
+	seen := map[plumbing.Hash]struct{}{}
+
+	for len(pending) > 0 {
+		hash := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+
+		if _, ok := seen[hash]; ok {
+			continue
+		}
+
+		seen[hash] = struct{}{}
+
+		commit, err := repository.CommitObject(hash)
+		if err != nil {
+			return nil, err
+		}
+
 		commits = append(commits, commit)
 
-		return nil
-	})
+		if _, ok := boundaries[hash]; !ok {
+			pending = append(pending, commit.ParentHashes...)
+		}
+	}
 
-	return commits, err
+	return commits, nil
 }
 
 func extractAllTagsCommit(repository *gogit.Repository) ([]*object.Commit, error) {
