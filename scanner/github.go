@@ -184,7 +184,7 @@ Retry:
 	}
 
 	if err != nil {
-		if resp.StatusCode == http.StatusNotFound {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
 			return ErrPubliccodeNotFound
 		}
 
