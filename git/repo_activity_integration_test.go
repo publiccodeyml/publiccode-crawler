@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,6 +75,18 @@ func TestCalculateRepoActivityMissingCache(t *testing.T) {
 
 	_, _, err := CalculateRepoActivity(repo, 365, fixedNow)
 	assert.Error(t, err)
+}
+
+func TestCalculateRepoActivityRejectsNonPositiveDays(t *testing.T) {
+	repo := common.Repository{}
+
+	for _, days := range []int{0, -1} {
+		t.Run(fmt.Sprintf("days=%d", days), func(t *testing.T) {
+			_, _, err := CalculateRepoActivity(repo, days, fixedNow)
+
+			assert.EqualError(t, err, "activity window must be positive")
+		})
+	}
 }
 
 // TestCalculateRepoActivityLongevityBoundary checks that a repo whose oldest
