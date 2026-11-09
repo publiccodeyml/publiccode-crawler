@@ -48,6 +48,7 @@ type Crawler struct {
 	hosts map[string]vcsHost
 
 	apiClient apiclient.APIClient
+	newParser func(publiccode.ParserConfig) (*publiccode.Parser, error)
 }
 
 // NewCrawler initializes a new Crawler object and connects to Elasticsearch (if dryRun == false).
@@ -375,7 +376,12 @@ func (c *Crawler) ProcessRepo(repository common.Repository) { //nolint:funlen,go
 
 	var parser *publiccode.Parser
 
-	parser, err = publiccode.NewParser(publiccode.ParserConfig{Domain: domain})
+	newParser := publiccode.NewParser
+	if c.newParser != nil {
+		newParser = c.newParser
+	}
+
+	parser, err = newParser(publiccode.ParserConfig{Domain: domain})
 	if err != nil {
 		logEntries = append(
 			logEntries,

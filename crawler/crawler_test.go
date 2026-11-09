@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/italia/publiccode-crawler/v4/apiclient"
@@ -13,6 +16,7 @@ import (
 	publiccode "github.com/publiccodeyml/libpubliccode/v5"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMergeNewAliases_addsNew(t *testing.T) {
@@ -214,4 +218,79 @@ func TestUpsertSoftware_keepsActiveOnInvalidFile(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, true, patched["active"])
+}
+
+func TestProcessRepo_usesCanonicalURLAfterParseFailure(t *testing.T) {
+	dataDir := t.TempDir()
+	gitDir := filepath.Join(t.TempDir(), "repository")
+	require.NoError(t, os.MkdirAll(gitDir, 0o755))
+	runGit(t, gitDir, "init", "--initial-branch=main")
+	runGit(t, gitDir, "config", "user.email", "crawler@example.test")
+	runGit(t, gitDir, "config", "user.name", "Crawler test")
+	require.NoError(t, os.WriteFile(filepath.Join(gitDir, "README.md"), []byte("test\n"), 0o600))
+	runGit(t, gitDir, "add", "README.md")
+	runGit(t, gitDir, "commit", "-m", "initial commit")
+
+	var savedURL string
+	var savedActive bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/publiccode.yml":
+			_, _ = w.Write([]byte("not: [valid"))
+		case r.URL.Path == "/software" && r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case r.URL.Path == "/software" && r.Method == http.MethodPost:
+			var software apiclient.Software
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&software))
+			savedURL = software.URL
+			savedActive = software.Active
+			_, _ = w.Write([]byte(`{"id":"software"}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	viper.Set("API_BASEURL", server.URL)
+	viper.Set("API_BEARER_TOKEN", "token")
+	viper.Set("DATADIR", dataDir)
+	viper.Set("MAIN_PUBLISHER_ID", "")
+	viper.Set("SKIP_VITALITY", false)
+	t.Cleanup(viper.Reset)
+
+	canonicalURL, err := url.Parse("file://" + gitDir)
+	require.NoError(t, err)
+	repositoryURL, err := url.Parse("https://example.test/owner/renamed-repository")
+	require.NoError(t, err)
+
+	crawler := &Crawler{
+		Index:     "canonical-url",
+		apiClient: apiclient.NewClient(),
+		newParser: func(config publiccode.ParserConfig) (*publiccode.Parser, error) {
+			config.AllowNetworkToPrivateHosts = true
+
+			return publiccode.NewParser(config)
+		},
+	}
+	repository := common.Repository{
+		Name:         "owner/repository",
+		URL:          *repositoryURL,
+		CanonicalURL: *canonicalURL,
+		FileRawURL:   server.URL + "/publiccode.yml",
+	}
+
+	assert.NotPanics(t, func() {
+		crawler.ProcessRepo(repository)
+	})
+	assert.Equal(t, canonicalURL.String(), savedURL)
+	assert.False(t, savedActive)
+	assert.FileExists(t, filepath.Join(dataDir, "repos", repositoryURL.Host, "owner", "repository", "vitality.json"))
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+
+	command := exec.Command("git", args...)
+	command.Dir = dir
+	require.NoError(t, command.Run())
 }
