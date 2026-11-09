@@ -23,6 +23,18 @@ from a Docker container.
 
 2. Build the binary with `go build`
 
+3. Set the credentials before running a crawl:
+
+   ```console
+   export GITHUB_TOKEN="<GitHub API token>"
+   export API_BEARER_TOKEN="<open-catalog-api bearer token>"
+   ./publiccode-crawler crawl
+   ```
+
+   `GITHUB_TOKEN` is required for GitHub API requests. `API_BEARER_TOKEN`
+   authorizes the requests that save crawl results to open-catalog-api.
+   Environment variables take precedence over values in `config.toml`.
+
 ### Docker
 
 You can build the Docker image using
@@ -31,10 +43,16 @@ You can build the Docker image using
 docker build .
 ```
 
-or use the image published to DockerHub:
+or use the image published to DockerHub. Set the same credentials in the host
+environment and pass them to the container:
 
 ```console
-docker run -it publiccodeyml/publiccode-crawler
+export GITHUB_TOKEN="<GitHub API token>"
+export API_BEARER_TOKEN="<open-catalog-api bearer token>"
+docker run --rm \
+  -e GITHUB_TOKEN \
+  -e API_BEARER_TOKEN \
+  publiccodeyml/publiccode-crawler
 ```
 
 ## Commands
