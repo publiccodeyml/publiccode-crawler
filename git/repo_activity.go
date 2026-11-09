@@ -34,6 +34,10 @@ type Range struct {
 //
 //nolint:funlen // Single linear walk over the cache, splitting hurts readability.
 func CalculateRepoActivity(repository common.Repository, days int, now time.Time) (float64, map[int]float64, error) {
+	if days <= 0 {
+		return 0, nil, errors.New("activity window must be positive")
+	}
+
 	if repository.Name == "" {
 		return 0, nil, errors.New("cannot calculate repository activity without name")
 	}
