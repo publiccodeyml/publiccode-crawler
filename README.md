@@ -63,18 +63,18 @@ outcome of each run.
 
 The crawler exposes these counters:
 
-* `publiccode_crawler_repository_processed_total`: repositories processed.
-* `publiccode_crawler_repository_good_publiccodeyml_total`: valid
+* `publiccode_crawler__repository_processed`: repositories processed.
+* `publiccode_crawler__repository_good_publiccodeyml`: valid
   `publiccode.yml` files found.
-* `publiccode_crawler_repository_bad_publiccodeyml_total`: invalid
+* `publiccode_crawler__repository_bad_publiccodeyml`: invalid
   `publiccode.yml` files found.
-* `publiccode_crawler_repository_cloned_total`: repositories cloned for
+* `publiccode_crawler__repository_cloned`: repositories cloned for
   vitality calculations.
-* `publiccode_crawler_repository_new_total`: new repositories saved to the API.
-* `publiccode_crawler_repository_known_total`: existing repositories processed.
-* `publiccode_crawler_repository_fetch_failed_total`: repository fetch failures
-  other than missing `publiccode.yml` files.
-* `publiccode_crawler_repository_upsert_failures_total`: failures while
+* `publiccode_crawler__repository_new`: new repositories saved to the API.
+* `publiccode_crawler__repository_known`: existing repositories processed.
+* `publiccode_crawler__repository_fetch_failed`: failed HTTP downloads of
+  `publiccode.yml` other than 404 responses.
+* `publiccode_crawler__repository_upsert_failures`: failures while
   creating or updating software in the API.
 
 ## Commands
