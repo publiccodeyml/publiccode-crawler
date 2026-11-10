@@ -36,6 +36,35 @@ func TestCloneRepositoryTimeout(t *testing.T) {
 	t.Setenv("GO_TEST_BINARY", os.Args[0])
 	t.Setenv("GO_WANT_CLONE_HELPER", "1")
 	t.Setenv("GO_CLONE_HELPER_CALLS", callsPath)
+	t.Setenv("GO_CLONE_HELPER_HANG_ON", "first")
+	viper.Set("DATADIR", t.TempDir())
+
+	previousTimeout := cloneTimeout
+	cloneTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { cloneTimeout = previousTimeout })
+
+	started := time.Now()
+	err := CloneRepository("example.com", "owner/repository", "https://example.com/repository.git", "test")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.ErrorContains(t, err, "https://example.com/repository.git")
+	assert.Less(t, time.Since(started), 3*time.Second)
+	assert.FileExists(t, callsPath)
+	assert.Equal(t, "1", string(mustReadFile(t, callsPath)))
+}
+
+func TestCloneRepositoryFallbackTimeout(t *testing.T) {
+	dir := t.TempDir()
+	gitPath := filepath.Join(dir, "git")
+	callsPath := filepath.Join(dir, "calls")
+	script := "#!/bin/sh\nexec \"$GO_TEST_BINARY\" -test.run='^TestCloneRepositoryHelperProcess$' -- \"$@\"\n"
+	require.NoError(t, os.WriteFile(gitPath, []byte(script), 0o755))
+	t.Setenv("PATH", dir)
+	t.Setenv("GO_TEST_BINARY", os.Args[0])
+	t.Setenv("GO_WANT_CLONE_HELPER", "1")
+	t.Setenv("GO_CLONE_HELPER_CALLS", callsPath)
+	t.Setenv("GO_CLONE_HELPER_HANG_ON", "fallback")
 
 	dataDir := t.TempDir()
 	viper.Set("DATADIR", dataDir)
@@ -76,9 +105,13 @@ func TestCloneRepositoryHelperProcess(t *testing.T) {
 	}
 
 	if len(calls) == 0 {
+		require.NoError(t, os.WriteFile(callsPath, []byte("1"), 0o600))
+		if os.Getenv("GO_CLONE_HELPER_HANG_ON") == "first" {
+			hangCloneHelper(t)
+		}
+
 		for _, arg := range os.Args {
 			if strings.HasPrefix(arg, "--shallow-since=") {
-				require.NoError(t, os.WriteFile(callsPath, []byte("1"), 0o600))
 				os.Exit(128)
 			}
 		}
@@ -87,6 +120,16 @@ func TestCloneRepositoryHelperProcess(t *testing.T) {
 	}
 
 	require.NoError(t, os.WriteFile(callsPath, []byte("2"), 0o600))
+	if os.Getenv("GO_CLONE_HELPER_HANG_ON") == "fallback" {
+		hangCloneHelper(t)
+	}
+
+	os.Exit(1)
+}
+
+func hangCloneHelper(t *testing.T) {
+	t.Helper()
+
 	child := exec.Command(os.Args[0], "-test.run=^TestCloneRepositoryHelperProcess$", "--")
 	child.Env = append(os.Environ(), "GO_WANT_CLONE_HELPER_CHILD=1")
 	child.Stdout = os.Stdout
