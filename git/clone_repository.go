@@ -21,6 +21,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var cloneTimeout = 30 * time.Second
+
 func vitalityCachePath(hostname, vendor, repo string) string {
 	return filepath.Join(viper.GetString("DATADIR"), "repos", hostname, vendor, repo, "vitality.json")
 }
@@ -52,8 +54,15 @@ func CloneRepository(hostname, name, gitURL, index string) error {
 
 	args = append(args, gitURL, tmpDir)
 
-	cmd := exec.CommandContext(context.Background(), "git", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("clone %s timed out: %w", gitURL, ctx.Err())
+		}
+
 		if existing == nil {
 			return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
 		}
@@ -62,8 +71,12 @@ func CloneRepository(hostname, name, gitURL, index string) error {
 			return fmt.Errorf("cannot remove incomplete clone of %s: %w", gitURL, err)
 		}
 
-		cmd = exec.CommandContext(context.Background(), "git", "clone", "--filter=blob:none", "--bare", gitURL, tmpDir)
+		cmd = exec.CommandContext(ctx, "git", "clone", "--filter=blob:none", "--bare", gitURL, tmpDir)
 		if out, err := cmd.CombinedOutput(); err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("clone %s timed out: %w", gitURL, ctx.Err())
+			}
+
 			return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
 		}
 	}
