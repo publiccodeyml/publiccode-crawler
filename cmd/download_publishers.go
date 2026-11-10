@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,10 +26,12 @@ type repolistType struct {
 }
 
 var downloadPublishersCmd = &cobra.Command{
-	Use:   "download-publishers REPOLIST_URL DEST_FILE",
-	Short: "Download the list of repos and orgs from the onboarding portal.",
-	Long:  `Download the list of repos and orgs from the onboarding portal and convert it into a publishers.yml.`,
-	Args:  cobra.ExactArgs(2),
+	Use:           "download-publishers REPOLIST_URL DEST_FILE",
+	Short:         "Download the list of repos and orgs from the onboarding portal.",
+	Long:          `Download the list of repos and orgs from the onboarding portal and convert it into a publishers.yml.`,
+	Args:          cobra.ExactArgs(2),
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	RunE: func(_ *cobra.Command, args []string) error {
 		return downloadPublishers(args[0], args[1])
 	},
@@ -46,11 +49,17 @@ func downloadPublishers(repolistURL, destination string) error {
 		_ = yaml.Unmarshal(data, &publishers)
 	}
 
-	resp, err := http.Get(repolistURL)
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, repolistURL, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("download publisher list: %s", resp.Status)
 	}
