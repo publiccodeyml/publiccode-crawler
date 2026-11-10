@@ -6,18 +6,27 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/PaesslerAG/jsonpath"
 )
 
+const jsonCatalogRequestTimeout = 30 * time.Second
+
 // JSONDriver fetches a JSON document representing a catalog and extracts
 // repository URLs via a JSONPath expression.
 type JSONDriver struct {
-	jsonPath string
+	jsonPath   string
+	httpClient *http.Client
 }
 
 func NewJSONDriver(jsonPath string) *JSONDriver {
-	return &JSONDriver{jsonPath: jsonPath}
+	return &JSONDriver{
+		jsonPath: jsonPath,
+		httpClient: &http.Client{
+			Timeout: jsonCatalogRequestTimeout,
+		},
+	}
 }
 
 func (c *JSONDriver) Enumerate(ctx context.Context, catalogURL url.URL) ([]url.URL, error) {
@@ -26,7 +35,7 @@ func (c *JSONDriver) Enumerate(ctx context.Context, catalogURL url.URL) ([]url.U
 		return nil, fmt.Errorf("json catalog: new request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("json catalog: GET %s: %w", catalogURL.String(), err)
 	}
