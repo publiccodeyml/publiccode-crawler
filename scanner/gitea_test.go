@@ -37,10 +37,13 @@ func giteaPublisher() common.Publisher {
 }
 
 func TestGiteaScanner_ScanRepo_success(t *testing.T) {
+	t.Setenv("GITEA_TOKEN", "test-token")
+
 	repo := giteaRepoJSON("myrepo", "myorg/myrepo", "main", false, false, false)
 
 	ts := newGiteaTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/v1/repos/myorg/myrepo", r.URL.Path)
+		assert.Equal(t, "token test-token", r.Header.Get("Authorization"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(repo)
