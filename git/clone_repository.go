@@ -58,6 +58,7 @@ func CloneRepository(hostname, name, gitURL, index string) error {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.WaitDelay = time.Second
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("clone %s timed out: %w", gitURL, ctx.Err())
@@ -72,6 +73,7 @@ func CloneRepository(hostname, name, gitURL, index string) error {
 		}
 
 		cmd = exec.CommandContext(ctx, "git", "clone", "--filter=blob:none", "--bare", gitURL, tmpDir)
+		cmd.WaitDelay = time.Second
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if ctx.Err() != nil {
 				return fmt.Errorf("clone %s timed out: %w", gitURL, ctx.Err())
