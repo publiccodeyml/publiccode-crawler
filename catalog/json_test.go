@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,25 @@ func TestJSONDriverEnumerate(t *testing.T) {
 		{Scheme: "https", Host: "github.com", Path: "/example/first"},
 		{Scheme: "https", Host: "gitlab.example", Path: "/second"},
 	}, urls)
+}
+
+func TestJSONDriverEnumerateTimesOutStalledResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	catalogURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+
+	driver := NewJSONDriver("$.repositories[*].url")
+	driver.httpClient.Timeout = 100 * time.Millisecond
+
+	urls, err := driver.Enumerate(context.Background(), *catalogURL)
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "context deadline exceeded")
+	assert.Nil(t, urls)
 }
 
 func TestJSONDriverEnumerateErrors(t *testing.T) {
