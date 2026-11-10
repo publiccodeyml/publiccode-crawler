@@ -7,11 +7,21 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/italia/publiccode-crawler/v4/common"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
+
+const publisherDownloadTimeout = 30 * time.Second
+
+var publisherDownloadHTTPClient = &http.Client{
+	Transport:     nil,
+	CheckRedirect: nil,
+	Jar:           nil,
+	Timeout:       publisherDownloadTimeout,
+}
 
 func init() {
 	rootCmd.AddCommand(downloadPublishersCmd)
@@ -34,11 +44,11 @@ var downloadPublishersCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
 
-		return downloadPublishers(args[0], args[1])
+		return downloadPublishers(context.Background(), args[0], args[1])
 	},
 }
 
-func downloadPublishers(repolistURL, destination string) error {
+func downloadPublishers(ctx context.Context, repolistURL, destination string) error {
 	var publishers []common.Publisher
 
 	if _, err := os.Stat(destination); err == nil {
@@ -50,12 +60,12 @@ func downloadPublishers(repolistURL, destination string) error {
 		_ = yaml.Unmarshal(data, &publishers)
 	}
 
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, repolistURL, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, repolistURL, nil)
 	if err != nil {
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(request)
+	resp, err := publisherDownloadHTTPClient.Do(request)
 	if err != nil {
 		return err
 	}

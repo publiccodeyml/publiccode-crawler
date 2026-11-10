@@ -1,13 +1,23 @@
 package cmd
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestPublisherDownloadClientSetsTimeout(t *testing.T) {
+	t.Parallel()
+
+	if publisherDownloadHTTPClient.Timeout != publisherDownloadTimeout {
+		t.Fatalf("publisherDownloadHTTPClient.Timeout = %s, want %s", publisherDownloadHTTPClient.Timeout, publisherDownloadTimeout)
+	}
+}
 
 func TestDownloadPublishersKeepsDestinationOnUnsuccessfulResponse(t *testing.T) {
 	t.Parallel()
@@ -23,7 +33,7 @@ func TestDownloadPublishersKeepsDestinationOnUnsuccessfulResponse(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	err := downloadPublishers(server.URL, destination)
+	err := downloadPublishers(context.Background(), server.URL, destination)
 	if err == nil {
 		t.Fatal("downloadPublishers() returned nil error")
 	}
@@ -37,5 +47,23 @@ func TestDownloadPublishersKeepsDestinationOnUnsuccessfulResponse(t *testing.T) 
 	}
 	if string(data) != string(original) {
 		t.Fatalf("destination = %q, want %q", data, original)
+	}
+}
+
+func TestDownloadPublishersCancelsStalledResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := downloadPublishers(ctx, server.URL, t.TempDir()+"/publishers.yml")
+	if err == nil {
+		t.Fatal("downloadPublishers() returned nil error")
+	}
+	if !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("downloadPublishers() error = %v, want context deadline exceeded", err)
 	}
 }
