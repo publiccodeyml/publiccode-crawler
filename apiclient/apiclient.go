@@ -438,6 +438,10 @@ func (clt APIClient) GetSoftware(softwareID string) (*Software, error) {
 
 	defer res.Body.Close()
 
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("can't GET /software/%s: HTTP status %s", softwareID, res.Status)
+	}
+
 	err = json.NewDecoder(res.Body).Decode(&softwareResponse)
 	if err != nil {
 		return nil, fmt.Errorf("can't parse GET /software/%s response: %w", softwareID, err)

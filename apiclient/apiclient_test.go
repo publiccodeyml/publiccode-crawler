@@ -90,6 +90,17 @@ func TestGetCatalogSoftwareByURL_rejectsUnsuccessfulResponse(t *testing.T) {
 	assert.ErrorContains(t, err, "HTTP status 404")
 }
 
+func TestGetSoftware_rejectsUnsuccessfulResponse(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+	})
+
+	software, err := client.GetSoftware("id1")
+
+	assert.Nil(t, software)
+	assert.ErrorContains(t, err, "HTTP status 503")
+}
+
 func TestPatchSoftware_sendsActive(t *testing.T) {
 	var fields map[string]any
 
