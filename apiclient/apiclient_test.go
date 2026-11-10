@@ -68,6 +68,28 @@ func TestGetCatalogSoftwareByURL_includesInactive(t *testing.T) {
 	assert.Equal(t, "id1", software.ID)
 }
 
+func TestGetSoftwareByURL_rejectsUnsuccessfulResponse(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+
+	software, err := client.GetSoftwareByURL("https://example.org/repo.git")
+
+	assert.Nil(t, software)
+	assert.ErrorContains(t, err, "HTTP status 404")
+}
+
+func TestGetCatalogSoftwareByURL_rejectsUnsuccessfulResponse(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+
+	software, err := client.GetCatalogSoftwareByURL("catalog1", "https://example.org/repo.git")
+
+	assert.Nil(t, software)
+	assert.ErrorContains(t, err, "HTTP status 404")
+}
+
 func TestPatchSoftware_sendsActive(t *testing.T) {
 	var fields map[string]any
 
