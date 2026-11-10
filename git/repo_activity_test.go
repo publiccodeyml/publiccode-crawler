@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -60,6 +61,10 @@ func TestCloneRepositoryHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_CLONE_HELPER") != "1" {
 		return
 	}
+	if os.Getenv("GO_WANT_CLONE_HELPER_CHILD") == "1" {
+		time.Sleep(2 * time.Second)
+		return
+	}
 
 	callsPath := os.Getenv("GO_CLONE_HELPER_CALLS")
 	calls, err := os.ReadFile(callsPath)
@@ -79,6 +84,11 @@ func TestCloneRepositoryHelperProcess(t *testing.T) {
 	}
 
 	require.NoError(t, os.WriteFile(callsPath, []byte("2"), 0o600))
+	child := exec.Command(os.Args[0], "-test.run=^TestCloneRepositoryHelperProcess$", "--")
+	child.Env = append(os.Environ(), "GO_WANT_CLONE_HELPER_CHILD=1")
+	child.Stdout = os.Stdout
+	child.Stderr = os.Stderr
+	require.NoError(t, child.Start())
 	select {}
 }
 
