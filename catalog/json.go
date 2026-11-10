@@ -24,7 +24,10 @@ func NewJSONDriver(jsonPath string) *JSONDriver {
 	return &JSONDriver{
 		jsonPath: jsonPath,
 		httpClient: &http.Client{
-			Timeout: jsonCatalogRequestTimeout,
+			Transport:     nil,
+			CheckRedirect: nil,
+			Jar:           nil,
+			Timeout:       jsonCatalogRequestTimeout,
 		},
 	}
 }
