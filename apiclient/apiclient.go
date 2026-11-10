@@ -315,6 +315,10 @@ func (clt APIClient) GetCatalogSoftwareByURL(catalogID string, softwareURL strin
 
 	defer res.Body.Close()
 
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("can't GET catalog %s software by url: HTTP status %s", catalogID, res.Status)
+	}
+
 	err = json.NewDecoder(res.Body).Decode(&softwareResponse)
 	if err != nil {
 		return nil, fmt.Errorf("can't parse GET catalog %s software response: %w", catalogID, err)
@@ -463,6 +467,10 @@ func (clt APIClient) GetSoftwareByURL(url string) (*Software, error) {
 	}
 
 	defer res.Body.Close()
+
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("can't GET /software?url=%s: HTTP status %s", url, res.Status)
+	}
 
 	err = json.NewDecoder(res.Body).Decode(&softwareResponse)
 	if err != nil {
