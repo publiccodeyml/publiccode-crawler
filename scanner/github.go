@@ -191,25 +191,24 @@ Retry:
 		return fmt.Errorf("[%s]: failed to get publiccode.yml: %w", *repo.FullName, err)
 	}
 
-	if file.DownloadURL == nil {
+	// GetContents returns no file content and no error when the path is a directory.
+	if file == nil || file.DownloadURL == nil {
 		return fmt.Errorf("[%s]: failed to get publiccode.yml: not a regular file?", *repo.FullName)
 	}
 
-	if file != nil {
-		canonicalURL, err := url.Parse(*repo.CloneURL)
-		if err != nil {
-			return fmt.Errorf("failed to get canonical repo URL for %s: %w", url.String(), err)
-		}
+	canonicalURL, err := url.Parse(*repo.CloneURL)
+	if err != nil {
+		return fmt.Errorf("failed to get canonical repo URL for %s: %w", url.String(), err)
+	}
 
-		repositories <- common.Repository{
-			Name:         *repo.FullName,
-			FileRawURL:   *file.DownloadURL,
-			URL:          url,
-			CanonicalURL: *canonicalURL,
-			GitBranch:    *repo.DefaultBranch,
-			Publisher:    publisher,
-			Headers:      make(map[string]string),
-		}
+	repositories <- common.Repository{
+		Name:         *repo.FullName,
+		FileRawURL:   *file.DownloadURL,
+		URL:          url,
+		CanonicalURL: *canonicalURL,
+		GitBranch:    *repo.DefaultBranch,
+		Publisher:    publisher,
+		Headers:      make(map[string]string),
 	}
 
 	return nil
