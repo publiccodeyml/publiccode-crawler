@@ -57,32 +57,8 @@ func CloneRepository(hostname, name, gitURL, index string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.WaitDelay = time.Second
-
-	if out, err := cmd.CombinedOutput(); err != nil {
-		if ctx.Err() != nil {
-			return fmt.Errorf("clone %s timed out: %w", gitURL, ctx.Err())
-		}
-
-		if existing == nil {
-			return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
-		}
-
-		if err := os.RemoveAll(tmpDir); err != nil {
-			return fmt.Errorf("cannot remove incomplete clone of %s: %w", gitURL, err)
-		}
-
-		cmd = exec.CommandContext(ctx, "git", "clone", "--filter=blob:none", "--bare", gitURL, tmpDir)
-		cmd.WaitDelay = time.Second
-
-		if out, err := cmd.CombinedOutput(); err != nil {
-			if ctx.Err() != nil {
-				return fmt.Errorf("clone %s timed out: %w", gitURL, ctx.Err())
-			}
-
-			return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
-		}
+	if err := cloneWithFallback(ctx, args, existing, gitURL, tmpDir); err != nil {
+		return err
 	}
 
 	repository, err := gogit.PlainOpen(tmpDir)
@@ -107,6 +83,45 @@ func CloneRepository(hostname, name, gitURL, index string) error {
 	}
 
 	return os.WriteFile(cachePath, data, 0o600)
+}
+
+func cloneWithFallback(
+	ctx context.Context, args []string, existing *vitality.Cache, gitURL, tmpDir string,
+) error {
+	out, err := runClone(ctx, args...)
+	if err == nil {
+		return nil
+	}
+
+	if ctx.Err() != nil {
+		return fmt.Errorf("clone %s timed out: %w", gitURL, ctx.Err())
+	}
+
+	if existing == nil {
+		return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
+	}
+
+	if err := os.RemoveAll(tmpDir); err != nil {
+		return fmt.Errorf("cannot remove incomplete clone of %s: %w", gitURL, err)
+	}
+
+	out, err = runClone(ctx, "clone", "--filter=blob:none", "--bare", gitURL, tmpDir)
+	if err == nil {
+		return nil
+	}
+
+	if ctx.Err() != nil {
+		return fmt.Errorf("clone %s timed out: %w", gitURL, ctx.Err())
+	}
+
+	return fmt.Errorf("cannot clone %s: %w: %s", gitURL, err, out)
+}
+
+func runClone(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.WaitDelay = time.Second
+
+	return cmd.CombinedOutput()
 }
 
 func loadExistingCache(path string) *vitality.Cache {
