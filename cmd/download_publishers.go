@@ -30,9 +30,10 @@ var downloadPublishersCmd = &cobra.Command{
 	Short:         "Download the list of repos and orgs from the onboarding portal.",
 	Long:          `Download the list of repos and orgs from the onboarding portal and convert it into a publishers.yml.`,
 	Args:          cobra.ExactArgs(2),
-	SilenceUsage:  true,
 	SilenceErrors: true,
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SilenceUsage = true
+
 		return downloadPublishers(args[0], args[1])
 	},
 }
