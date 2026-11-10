@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/italia/publiccode-crawler/v4/common"
 	log "github.com/sirupsen/logrus"
@@ -16,10 +17,21 @@ import (
 
 var errNotFound = errors.New("not found")
 
-type GiteaScanner struct{}
+const giteaRequestTimeout = 30 * time.Second
+
+type GiteaScanner struct {
+	httpClient *http.Client
+}
 
 func NewGiteaScanner() GiteaScanner {
-	return GiteaScanner{}
+	return GiteaScanner{
+		httpClient: &http.Client{
+			Transport:     nil,
+			CheckRedirect: nil,
+			Jar:           nil,
+			Timeout:       giteaRequestTimeout,
+		},
+	}
 }
 
 type giteaRepo struct {
@@ -54,7 +66,7 @@ func (scanner GiteaScanner) List(
 	}
 
 	for page := 1; ; page++ {
-		repos, err := fetchPage(&groupURL, owner, limit, page)
+		repos, err := fetchPage(scanner.httpClient, &groupURL, owner, limit, page)
 		if err != nil {
 			return fmt.Errorf("GiteaScanner: %w", err)
 		}
@@ -89,7 +101,7 @@ func (scanner GiteaScanner) Scan(
 	owner, repoName := parts[0], parts[1]
 	apiURL := fmt.Sprintf("%s://%s/api/v1/repos/%s/%s", repoURL.Scheme, repoURL.Host, owner, repoName)
 
-	repo, err := giteaFetchRepo(apiURL)
+	repo, err := giteaFetchRepo(scanner.httpClient, apiURL)
 	if err != nil {
 		return fmt.Errorf("GiteaScanner: %w", err)
 	}
@@ -131,11 +143,11 @@ func addGiteaRepo(
 	return nil
 }
 
-func giteaOrgReposPage(base *url.URL, owner string, limit, page int) ([]giteaRepo, error) {
+func giteaOrgReposPage(httpClient *http.Client, base *url.URL, owner string, limit, page int) ([]giteaRepo, error) {
 	apiURL := fmt.Sprintf("%s://%s/api/v1/orgs/%s/repos?limit=%d&page=%d",
 		base.Scheme, base.Host, url.PathEscape(owner), limit, page)
 
-	repos, err := giteaFetchRepoList(apiURL)
+	repos, err := giteaFetchRepoList(httpClient, apiURL)
 	if !errors.Is(err, errNotFound) {
 		return repos, err
 	}
@@ -144,10 +156,10 @@ func giteaOrgReposPage(base *url.URL, owner string, limit, page int) ([]giteaRep
 	userURL := fmt.Sprintf("%s://%s/api/v1/users/%s/repos?limit=%d&page=%d",
 		base.Scheme, base.Host, url.PathEscape(owner), limit, page)
 
-	return giteaFetchRepoList(userURL)
+	return giteaFetchRepoList(httpClient, userURL)
 }
 
-func giteaInstanceReposPage(base *url.URL, _ string, limit, page int) ([]giteaRepo, error) {
+func giteaInstanceReposPage(httpClient *http.Client, base *url.URL, _ string, limit, page int) ([]giteaRepo, error) {
 	apiURL := fmt.Sprintf("%s://%s/api/v1/repos/search?limit=%d&page=%d",
 		base.Scheme, base.Host, limit, page)
 
@@ -156,7 +168,7 @@ func giteaInstanceReposPage(base *url.URL, _ string, limit, page int) ([]giteaRe
 		return nil, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", apiURL, err)
 	}
@@ -174,13 +186,13 @@ func giteaInstanceReposPage(base *url.URL, _ string, limit, page int) ([]giteaRe
 	return result.Data, nil
 }
 
-func giteaFetchRepoList(apiURL string) ([]giteaRepo, error) {
+func giteaFetchRepoList(httpClient *http.Client, apiURL string) ([]giteaRepo, error) {
 	req, err := giteaNewRequest(apiURL)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", apiURL, err)
 	}
@@ -202,13 +214,13 @@ func giteaFetchRepoList(apiURL string) ([]giteaRepo, error) {
 	return repos, nil
 }
 
-func giteaFetchRepo(apiURL string) (giteaRepo, error) {
+func giteaFetchRepo(httpClient *http.Client, apiURL string) (giteaRepo, error) {
 	req, err := giteaNewRequest(apiURL)
 	if err != nil {
 		return giteaRepo{}, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return giteaRepo{}, fmt.Errorf("GET %s: %w", apiURL, err)
 	}
