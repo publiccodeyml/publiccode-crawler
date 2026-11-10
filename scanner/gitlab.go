@@ -24,9 +24,9 @@ func (scanner GitLabScanner) List(
 ) error {
 	log.Debugf("GitLabScanner.List(%s)", url.String())
 
-	apiURL, _ := url.Parse("/api/v4")
+	apiURL := gitlabAPIURL(url)
 
-	git, err := gitlab.NewClient(os.Getenv("GITLAB_TOKEN"), gitlab.WithBaseURL(apiURL.String()))
+	git, err := gitlab.NewClient(os.Getenv("GITLAB_TOKEN"), gitlab.WithBaseURL(apiURL))
 	if err != nil {
 		return err
 	}
@@ -80,9 +80,9 @@ func (scanner GitLabScanner) Scan(
 ) error {
 	log.Debugf("GitLabScanner.Scan(%s)", url.String())
 
-	apiURL, _ := url.Parse("/api/v4")
+	apiURL := gitlabAPIURL(url)
 
-	git, err := gitlab.NewClient(os.Getenv("GITLAB_TOKEN"), gitlab.WithBaseURL(apiURL.String()))
+	git, err := gitlab.NewClient(os.Getenv("GITLAB_TOKEN"), gitlab.WithBaseURL(apiURL))
 	if err != nil {
 		return err
 	}
@@ -95,6 +95,14 @@ func (scanner GitLabScanner) Scan(
 	}
 
 	return addProject(&url, *prj, publisher, repositories)
+}
+
+func gitlabAPIURL(gitlabURL url.URL) string {
+	return (&url.URL{
+		Scheme: gitlabURL.Scheme,
+		Host:   gitlabURL.Host,
+		Path:   "/api/v4",
+	}).String()
 }
 
 // isGitlabGroup returns true if the API URL points to a group.
