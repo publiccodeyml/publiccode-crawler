@@ -49,10 +49,13 @@ func TestCloneRepositoryTimeout(t *testing.T) {
 	cloneTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { cloneTimeout = previousTimeout })
 
+	started := time.Now()
 	err = CloneRepository("example.com", "owner/repository", "https://example.com/repository.git", "test")
+
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.ErrorContains(t, err, "https://example.com/repository.git")
+	assert.Less(t, time.Since(started), 3*time.Second)
 	assert.FileExists(t, callsPath)
 	assert.Equal(t, "2", string(mustReadFile(t, callsPath)))
 }
@@ -62,7 +65,7 @@ func TestCloneRepositoryHelperProcess(t *testing.T) {
 		return
 	}
 	if os.Getenv("GO_WANT_CLONE_HELPER_CHILD") == "1" {
-		time.Sleep(2 * time.Second)
+		time.Sleep(5 * time.Second)
 		return
 	}
 
