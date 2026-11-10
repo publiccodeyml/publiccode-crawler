@@ -1,8 +1,8 @@
 package cmd
 
 import (
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -29,79 +29,88 @@ var downloadPublishersCmd = &cobra.Command{
 	Short: "Download the list of repos and orgs from the onboarding portal.",
 	Long:  `Download the list of repos and orgs from the onboarding portal and convert it into a publishers.yml.`,
 	Args:  cobra.ExactArgs(2),
-	Run: func(_ *cobra.Command, args []string) {
-		var publishers []common.Publisher
+	RunE: func(_ *cobra.Command, args []string) error {
+		return downloadPublishers(args[0], args[1])
+	},
+}
 
-		if _, err := os.Stat(args[1]); err == nil {
-			data, err := os.ReadFile(args[1])
-			if err != nil {
-				log.Fatalf("error in reading %s: %v", args[1], err)
-			}
-			//nolint:musttag // false positive
-			_ = yaml.Unmarshal(data, &publishers)
-		}
+func downloadPublishers(repolistURL, destination string) error {
+	var publishers []common.Publisher
 
-		resp, err := http.Get(args[0])
+	if _, err := os.Stat(destination); err == nil {
+		data, err := os.ReadFile(destination)
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("read %s: %w", destination, err)
 		}
-		defer resp.Body.Close()
+		//nolint:musttag // false positive
+		_ = yaml.Unmarshal(data, &publishers)
+	}
 
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatal(err)
-		}
+	resp, err := http.Get(repolistURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("download publisher list: %s", resp.Status)
+	}
 
-		var repolist repolistType
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
 
-		err = yaml.Unmarshal(bodyBytes, &repolist)
-		if err != nil {
-			log.Fatal(err)
-		}
+	var repolist repolistType
 
-	REPOLIST:
-		for _, entry := range repolist.Registrati {
-			for idx, publisher := range publishers {
-				if publisher.ID == entry.IPA {
-					parsedURL, _ := url.Parse(entry.URL)
-					// If this Id is already known, append this URL to the existing item
-					publishers[idx].Sources = append(publisher.Sources, common.CodeHosting{
-						URL:    *parsedURL,
-						Driver: common.InferVCSDriver(*parsedURL),
-						Group:  true,
-					})
+	err = yaml.Unmarshal(bodyBytes, &repolist)
+	if err != nil {
+		return err
+	}
 
-					continue REPOLIST
-				}
-			}
-
-			parsedURL, _ := url.Parse(entry.URL)
-			// If this IPA code is not known, append a new publisher item
-			publishers = append(publishers, common.Publisher{
-				Name: entry.IPA,
-				ID:   entry.IPA,
-				Sources: []common.CodeHosting{{
+REPOLIST:
+	for _, entry := range repolist.Registrati {
+		for idx, publisher := range publishers {
+			if publisher.ID == entry.IPA {
+				parsedURL, _ := url.Parse(entry.URL)
+				// If this Id is already known, append this URL to the existing item
+				publishers[idx].Sources = append(publisher.Sources, common.CodeHosting{
 					URL:    *parsedURL,
 					Driver: common.InferVCSDriver(*parsedURL),
 					Group:  true,
-				}},
-			})
+				})
+
+				continue REPOLIST
+			}
 		}
 
-		// Write to the destination file
-		outFile, err := os.Create(args[1])
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer outFile.Close()
+		parsedURL, _ := url.Parse(entry.URL)
+		// If this IPA code is not known, append a new publisher item
+		publishers = append(publishers, common.Publisher{
+			Name: entry.IPA,
+			ID:   entry.IPA,
+			Sources: []common.CodeHosting{{
+				URL:    *parsedURL,
+				Driver: common.InferVCSDriver(*parsedURL),
+				Group:  true,
+			}},
+		})
+	}
 
-		data, err := yaml.Marshal(publishers)
-		if err != nil {
-			log.Fatal(err)
-		}
+	// Write to the destination file
+	outFile, err := os.Create(destination)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
 
-		if _, err = outFile.Write(data); err != nil {
-			log.Fatal(err)
-		}
-	},
+	data, err := yaml.Marshal(publishers)
+	if err != nil {
+		return err
+	}
+
+	if _, err = outFile.Write(data); err != nil {
+		return err
+	}
+
+	return nil
 }
