@@ -32,7 +32,13 @@ func TestJSONDriverEnumerate(t *testing.T) {
 	}, urls)
 }
 
-func TestJSONDriverEnumerateTimesOutStalledResponse(t *testing.T) {
+func TestNewJSONDriverSetsRequestTimeout(t *testing.T) {
+	driver := NewJSONDriver("$.repositories[*].url")
+
+	assert.Equal(t, jsonCatalogRequestTimeout, driver.httpClient.Timeout)
+}
+
+func TestJSONDriverEnumerateCancelsStalledResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))
@@ -41,10 +47,10 @@ func TestJSONDriverEnumerateTimesOutStalledResponse(t *testing.T) {
 	catalogURL, err := url.Parse(server.URL)
 	require.NoError(t, err)
 
-	driver := NewJSONDriver("$.repositories[*].url")
-	driver.httpClient.Timeout = 100 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 
-	urls, err := driver.Enumerate(context.Background(), *catalogURL)
+	urls, err := NewJSONDriver("$.repositories[*].url").Enumerate(ctx, *catalogURL)
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "context deadline exceeded")

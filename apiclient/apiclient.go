@@ -89,11 +89,12 @@ type Software struct {
 }
 
 func NewClient() APIClient {
-	retryableClient := retryablehttp.NewClient().StandardClient()
+	retryableClient := retryablehttp.NewClient()
+	retryableClient.ErrorHandler = retryablehttp.PassthroughErrorHandler
 
 	return APIClient{
 		baseURL:         viper.GetString("API_BASEURL"),
-		retryableClient: retryableClient,
+		retryableClient: retryableClient.StandardClient(),
 		token:           "Bearer " + viper.GetString("API_BEARER_TOKEN"),
 	}
 }
