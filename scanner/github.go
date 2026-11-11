@@ -83,7 +83,11 @@ func (scanner GitHubScanner) List(
 				url.String(), err.Error(),
 			)
 
-			repos, resp, err = scanner.client.Repositories.ListByUser(context.Background(), orgName, nil)
+			var userOpt github.RepositoryListByUserOptions
+
+			userOpt.ListOptions = opt.ListOptions
+
+			repos, resp, err = scanner.client.Repositories.ListByUser(context.Background(), orgName, &userOpt)
 			if err != nil {
 				return fmt.Errorf("can't list repositories in %s (not an GitHub organization?): %w", url.String(), err)
 			}
