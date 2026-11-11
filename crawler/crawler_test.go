@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,10 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/italia/publiccode-crawler/v4/apiclient"
 	"github.com/italia/publiccode-crawler/v4/common"
+	"github.com/italia/publiccode-crawler/v4/metrics"
 	publiccode "github.com/publiccodeyml/libpubliccode/v5"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -293,4 +297,61 @@ func runGit(t *testing.T, dir string, args ...string) {
 	command := exec.Command("git", args...)
 	command.Dir = dir
 	require.NoError(t, command.Run())
+}
+
+func TestProcessRepo_skipsParserDownloadFailure(t *testing.T) {
+	for _, publisherID := range []string{"main", "other"} {
+		for _, existing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("publisher=%s/existing=%t", publisherID, existing), func(t *testing.T) {
+				viper.Set("MAIN_PUBLISHER_ID", "main")
+				t.Cleanup(viper.Reset)
+
+				var downloads atomic.Int32
+				manifest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					downloads.Add(1)
+					_, _ = w.Write([]byte("publiccodeYmlVersion: \"0.4\"\n"))
+				}))
+				t.Cleanup(manifest.Close)
+
+				var entries string
+				var writes int
+				crawler := newTestCrawler(t, func(w http.ResponseWriter, r *http.Request) {
+					switch {
+					case r.Method == http.MethodGet && r.URL.Path == "/software":
+						if existing {
+							_, _ = w.Write([]byte(`{"data":[{"id":"id1","active":true}]}`))
+						} else {
+							_, _ = w.Write([]byte(`{"data":[]}`))
+						}
+					case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/logs"):
+						var payload struct {
+							Message string `json:"message"`
+						}
+						assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+						entries = payload.Message
+					default:
+						writes++
+					}
+				})
+
+				// The first fetch succeeds, but the parser refuses the second
+				// download because its client blocks loopback addresses.
+				repoURL, err := url.Parse("https://github.com/org/repo")
+				assert.NoError(t, err)
+				before := metrics.GetCounterValue("repository_good_publiccodeyml", crawler.Index)
+				crawler.ProcessRepo(common.Repository{
+					Name: "org/repo", URL: *repoURL, CanonicalURL: *repoURL,
+					FileRawURL: manifest.URL + "/publiccode.yml",
+					Publisher:  common.Publisher{ID: publisherID},
+				})
+
+				assert.EqualValues(t, 1, downloads.Load())
+				assert.Contains(t, entries, "parsing error: can't GET")
+				assert.Contains(t, entries, "non-public")
+				assert.NotContains(t, entries, "GOOD publiccode.yml")
+				assert.Equal(t, before, metrics.GetCounterValue("repository_good_publiccodeyml", crawler.Index))
+				assert.Zero(t, writes, "failed parser downloads must not create or update software")
+			})
+		}
+	}
 }

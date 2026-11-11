@@ -408,6 +408,10 @@ func (c *Crawler) ProcessRepo(repository common.Repository) { //nolint:funlen,go
 					break
 				}
 			}
+		} else {
+			logEntries = append(logEntries, fmt.Sprintf("[%s] parsing error: %s", repository.Name, err.Error()))
+
+			return
 		}
 	}
 
