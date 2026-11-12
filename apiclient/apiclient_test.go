@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -20,7 +21,12 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) APIClient {
 	viper.Set("API_BASEURL", server.URL)
 	viper.Set("API_BEARER_TOKEN", "token")
 
-	return NewClient()
+	client := NewClient()
+	retryClient := client.retryableClient.Transport.(*retryablehttp.RoundTripper).Client
+	retryClient.RetryWaitMin = 0
+	retryClient.RetryWaitMax = 0
+
+	return client
 }
 
 func patchBody(t *testing.T, r *http.Request) map[string]any {
@@ -91,7 +97,11 @@ func TestGetCatalogSoftwareByURL_rejectsUnsuccessfulResponse(t *testing.T) {
 }
 
 func TestGetSoftware_rejectsUnsuccessfulResponse(t *testing.T) {
+	attempts := 0
+
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 	})
 
@@ -99,6 +109,7 @@ func TestGetSoftware_rejectsUnsuccessfulResponse(t *testing.T) {
 
 	assert.Nil(t, software)
 	assert.ErrorContains(t, err, "HTTP status 503")
+	assert.Equal(t, client.retryableClient.Transport.(*retryablehttp.RoundTripper).Client.RetryMax+1, attempts)
 }
 
 func TestPatchSoftware_sendsActive(t *testing.T) {
