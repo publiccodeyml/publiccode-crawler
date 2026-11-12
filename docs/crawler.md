@@ -1,13 +1,33 @@
 ### Crawler flow
 
-[![Crawler Flow](https://tinyurl.com/36jpx4ms)](https://tinyurl.com/36jpx4ms)
-
-<!--
-Diagram image:
-
-https://mermaid.ink/svg/pako:eNqdV21vozgQ_isWq9W1OjbH-0s-rLRN29NK1d1q291P-WJgIFYMzhnTNlv1v5-BvIAJJHeOVBXmmZnHM-MZ86bFLAFtrpXwTwVFDLcEZxznywLJ9aME_unz598XeTJHsz9ijl8o8FYm3zWi9t0c_QkCbaqIknIFvEQpZzn68u3rafB3EJzAM3Q0fkMcNqxs8ZSxDbpnHAGOV4jxDBfkFxaEFa28sdka69m9BQGx5EGxSBnP0VVGxKqKdBQREVXxGoSO5CuKo-tpQweCXd8tQyKYFJXT-nevguN4F5G4jvFsm1MkxejH94czyt84i6Esj-62LR6K5HQ4BwoHfv1AqgbHCCxWEK9V7hsOZV0h06o_MSUJFiB95UyAYmRa9ypmRUqyiuOIwjVaUFbAxZxVZUzjitZEZBrIMxFbRIoEXqeNfEkSmXFUbZotlCwVL5gDEuxYyjIJmq7lwHNMEnlw3urXS02sIIelNpf_JpDiioqlpndEPzEnNbOyxry1ppZahON1xlklE9uovqyIgJ1iLd9wkmO-XTDKeIv4cLe4W9zfdzAlyJ0nCiqVK-laEsAF6YNWJb0KDB2ZhvFRR6E3s3zHNcLAsMOP10MSN4wnwBV9y5EGvFo_GNU_EDxpwTsYsGeuFTqm6XuO3zOw535SPzhPYLeBJ3gV3RiZtmkbximiKtKQyzJPMFKAPIuuwplr7JYpozr61CVISQFdf3azev76hPpSWYnFzTqbLpAjYFAbURNXcycObd-4vRmIrZ0Yy9XzjjlnLyvAyeQOUlaIe5wTum0Ry6XcFQfZlFdycORl_ayjZ-AJLrCO6tNCFfVH8mt3wkxv89oNH46A3ihH6QME9a8DK2QTmghTI262OhaImFalzPxEJPeIrplBwHb94YEU6-mky0EF41mHJIOHy3YuWyDrkWqOrhvOPMszvcCyHFtH8tH3Pdf2bNMK6vPkz0LDDD3DDxy7d55ac-ORbOTK0YioZKliHvp1n3HYduuWZAWm4wFo5U-TR6MtDfYq2U420QPuZJP735FqzJ6JRD2iz0AKOUkHzIaF1cD6G5UF6uJEwZxPDXluLjxDn57nnUYqbp361-tB7fXyryqPehbViSeb1dCe7Kv4yjSselbJP5br6siYOWGvKKl4PKV7xoF1DJTTGwYCl-vh_l3bSaNYhfU3H-DQSBIFU8f8gWQrMUFtj7sAcov5eiKFe9jflShJAhcgF_KWtq4vKP25Z5uerSYcni4LTQfcD1CUxn6adpAZJ93pQes4Kc0gkXfBoalJpMpQwcWciOEu0jSQS4X1qxF6yWUJ3iqNrI9omsBECkAOUK6EyHUtuVSQ2usGqJjisqxRY1eclFD6tN2AMdYI9wBzbMTtAdaxP9qGc_4Wudezj3qmddQbvfzt9ZyOnu9d7s896n36D-68zg3zcmd-h2QQjHqr1d6Xxbv8kMCVYI_bItbmglega-2nx-4rXJunmJaHt3dJ_R3UIt__Bc2ptTw
-
-Diagram editor:
-
-https://mermaid-js.github.io/mermaid-live-editor/edit#pako:eNqdV21vozgQ_isWq9W1OjbH-0s-rLRN29NK1d1q291P-WJgIFYMzhnTNlv1v5-BvIAJJHeOVBXmmZnHM-MZ86bFLAFtrpXwTwVFDLcEZxznywLJ9aME_unz598XeTJHsz9ijl8o8FYm3zWi9t0c_QkCbaqIknIFvEQpZzn68u3rafB3EJzAM3Q0fkMcNqxs8ZSxDbpnHAGOV4jxDBfkFxaEFa28sdka69m9BQGx5EGxSBnP0VVGxKqKdBQREVXxGoSO5CuKo-tpQweCXd8tQyKYFJXT-nevguN4F5G4jvFsm1MkxejH94czyt84i6Esj-62LR6K5HQ4BwoHfv1AqgbHCCxWEK9V7hsOZV0h06o_MSUJFiB95UyAYmRa9ypmRUqyiuOIwjVaUFbAxZxVZUzjitZEZBrIMxFbRIoEXqeNfEkSmXFUbZotlCwVL5gDEuxYyjIJmq7lwHNMEnlw3urXS02sIIelNpf_JpDiioqlpndEPzEnNbOyxry1ppZahON1xlklE9uovqyIgJ1iLd9wkmO-XTDKeIv4cLe4W9zfdzAlyJ0nCiqVK-laEsAF6YNWJb0KDB2ZhvFRR6E3s3zHNcLAsMOP10MSN4wnwBV9y5EGvFo_GNU_EDxpwTsYsGeuFTqm6XuO3zOw535SPzhPYLeBJ3gV3RiZtmkbximiKtKQyzJPMFKAPIuuwplr7JYpozr61CVISQFdf3azev76hPpSWYnFzTqbLpAjYFAbURNXcycObd-4vRmIrZ0Yy9XzjjlnLyvAyeQOUlaIe5wTum0Ry6XcFQfZlFdycORl_ayjZ-AJLrCO6tNCFfVH8mt3wkxv89oNH46A3ihH6QME9a8DK2QTmghTI262OhaImFalzPxEJPeIrplBwHb94YEU6-mky0EF41mHJIOHy3YuWyDrkWqOrhvOPMszvcCyHFtH8tH3Pdf2bNMK6vPkz0LDDD3DDxy7d55ac-ORbOTK0YioZKliHvp1n3HYduuWZAWm4wFo5U-TR6MtDfYq2U420QPuZJP735FqzJ6JRD2iz0AKOUkHzIaF1cD6G5UF6uJEwZxPDXluLjxDn57nnUYqbp361-tB7fXyryqPehbViSeb1dCe7Kv4yjSselbJP5br6siYOWGvKKl4PKV7xoF1DJTTGwYCl-vh_l3bSaNYhfU3H-DQSBIFU8f8gWQrMUFtj7sAcov5eiKFe9jflShJAhcgF_KWtq4vKP25Z5uerSYcni4LTQfcD1CUxn6adpAZJ93pQes4Kc0gkXfBoalJpMpQwcWciOEu0jSQS4X1qxF6yWUJ3iqNrI9omsBECkAOUK6EyHUtuVSQ2usGqJjisqxRY1eclFD6tN2AMdYI9wBzbMTtAdaxP9qGc_4Wudezj3qmddQbvfzt9ZyOnu9d7s896n36D-68zg3zcmd-h2QQjHqr1d6Xxbv8kMCVYI_bItbmglega-2nx-4rXJunmJaHt3dJ_R3UIt__Bc2ptTw
--->
+```mermaid
+sequenceDiagram
+    User->>Cmd: ./crawler crawl [publishers.yml ...]
+    alt publishers.yml files given
+        Cmd->>Crawler: Load publishers from the files
+    else no arguments
+        Cmd->>API: Get catalogs
+        alt catalogs found
+            Cmd->>Crawler: Crawl catalogs
+            loop For each catalog source
+                Crawler->>Crawler: List repositories (github, gitlab, bitbucket, gitea/forgejo)
+                Crawler->>Crawler: or read repository URLs from a JSON catalog
+            end
+        else no catalogs
+            Cmd->>API: Get publishers
+        end
+    end
+    loop For each publisher code hosting URL
+        Crawler->>Crawler: Detect platform (github, gitlab, bitbucket, gitea/forgejo)
+        Crawler->>Crawler: List the account repositories or scan a single repository
+    end
+    loop For each repository
+        Crawler->>API: Look up the software by URL
+        Crawler->>Crawler: Download publiccode.yml
+        Crawler->>Crawler: Validate publiccode.yml and the publisher
+        Crawler->>API: Add or update the software
+        Crawler->>Crawler: (configurable) Clone repository
+        Crawler->>Crawler: (configurable) Calculate activity index
+        Crawler->>API: Send the crawl log
+    end
+```
