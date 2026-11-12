@@ -48,16 +48,30 @@ var downloadPublishersCmd = &cobra.Command{
 	},
 }
 
-func downloadPublishers(ctx context.Context, repolistURL, destination string) error {
+func readExistingPublishers(destination string) ([]common.Publisher, error) {
 	var publishers []common.Publisher
 
-	if _, err := os.Stat(destination); err == nil {
-		data, err := os.ReadFile(destination)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", destination, err)
-		}
-		//nolint:musttag // false positive
-		_ = yaml.Unmarshal(data, &publishers)
+	if _, err := os.Stat(destination); err != nil {
+		return publishers, nil //nolint:nilerr // a missing destination starts an empty list
+	}
+
+	data, err := os.ReadFile(destination)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", destination, err)
+	}
+
+	//nolint:musttag // false positive
+	if err := yaml.Unmarshal(data, &publishers); err != nil {
+		return nil, fmt.Errorf("parse existing publishers in %s: %w", destination, err)
+	}
+
+	return publishers, nil
+}
+
+func downloadPublishers(ctx context.Context, repolistURL, destination string) error {
+	publishers, err := readExistingPublishers(destination)
+	if err != nil {
+		return err
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, repolistURL, nil)
