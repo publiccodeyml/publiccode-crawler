@@ -30,3 +30,13 @@ Create chart name and version as used by the chart label.
 {{- define "publiccode-crawler.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+{{/*
+Common labels
+*/}}
+{{- define "publiccode-crawler.labels" -}}
+helm.sh/chart: {{ include "publiccode-crawler.chart" . }}
+app.kubernetes.io/name: {{ include "publiccode-crawler.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}

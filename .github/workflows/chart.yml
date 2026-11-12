@@ -1,0 +1,39 @@
+on:
+  push:
+    paths:
+      - charts/**
+      - .github/workflows/chart.yml
+  pull_request:
+    paths:
+      - charts/**
+      - .github/workflows/chart.yml
+
+permissions: {}
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Lint chart
+        run: |
+          helm lint charts/publiccode-crawler \
+            --set secrets.apiBearerToken=token \
+            --set secrets.githubToken=token
+      - name: Render chart with generated secret
+        run: |
+          out=$(helm template test charts/publiccode-crawler \
+            --set secrets.apiBearerToken=token \
+            --set secrets.githubToken=token)
+          grep -qx 'kind: Secret' <<< "$out"
+          grep -qx '  name: test-publiccode-crawler' <<< "$out"
+      - name: Render chart with existing secret
+        run: |
+          out=$(helm template test charts/publiccode-crawler \
+            --set useExistingSecret=existing)
+          if grep -qx 'kind: Secret' <<< "$out"; then exit 1; fi
+          grep -q 'name: existing$' <<< "$out"
