@@ -10,4 +10,5 @@ RUN apk add --no-cache gcompat git \
     && mkdir -p /var/crawler/data
 
 COPY --from=build /src/publiccode-crawler /usr/local/bin/publiccode-crawler
+COPY --from=build /src/vitality-ranges.yml /vitality-ranges.yml
 CMD ["publiccode-crawler", "crawl"]
