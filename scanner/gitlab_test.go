@@ -17,10 +17,10 @@ func TestGitLabScannerUsesTargetInstanceAPI(t *testing.T) {
 	expectedHost := ""
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, expectedHost, r.Host)
-		require.Equal(t, "/api/v4", r.URL.Path[:len("/api/v4")])
+		assert.True(t, strings.HasPrefix(r.URL.Path, "/api/v4/"), r.URL.Path)
 		requests = append(requests, r.URL.EscapedPath())
 
-		switch r.URL.Path {
+		switch r.URL.EscapedPath() {
 		case "/api/v4/groups/example":
 			_, _ = w.Write([]byte(`{"id": 1}`))
 		case "/api/v4/groups/1/projects", "/api/v4/groups/1/descendant_groups":
