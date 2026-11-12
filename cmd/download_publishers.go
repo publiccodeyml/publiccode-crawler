@@ -83,7 +83,7 @@ REPOLIST:
 			if publisher.ID == entry.IPA {
 				parsedURL, _ := url.Parse(entry.URL)
 				// If this Id is already known, append this URL to the existing item
-				publishers[idx].Sources = append(publisher.Sources, common.CodeHosting{
+				publishers[idx].Sources = append(publishers[idx].Sources, common.CodeHosting{
 					URL:    *parsedURL,
 					Driver: common.InferVCSDriver(*parsedURL),
 					Group:  true,
