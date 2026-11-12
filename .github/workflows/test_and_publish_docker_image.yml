@@ -26,6 +26,11 @@ jobs:
       - run: go build
       - run: go mod verify
       - run: go test -race ./...
+      - name: Check vitality scoring data in the runtime image
+        run: |
+          docker build -t crawler-runtime-test .
+          docker run --rm --entrypoint sh crawler-runtime-test -c \
+            'test "$PWD" = / && test -s vitality-ranges.yml'
       - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
         with:
           repo-checkout: false

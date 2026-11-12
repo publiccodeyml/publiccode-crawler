@@ -123,3 +123,42 @@ func TestCalculateRepoActivityLongevityBoundary(t *testing.T) {
 	assert.Equal(t, float64(56), total)
 	assert.Len(t, index, 1)
 }
+
+// TestCalculateRepoActivityRuntimeLayout uses only the scoring data and cache,
+// with the working directory laid out like the runtime image root.
+func TestCalculateRepoActivityRuntimeLayout(t *testing.T) {
+	rangesData, err := os.ReadFile("../vitality-ranges.yml")
+	require.NoError(t, err)
+
+	runtimeDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(runtimeDir, "vitality-ranges.yml"), rangesData, 0o644))
+	t.Chdir(runtimeDir)
+
+	dataDir := filepath.Join(runtimeDir, "var", "crawler", "data")
+	previousDataDir := viper.Get("DATADIR")
+	viper.Set("DATADIR", dataDir)
+	t.Cleanup(func() { viper.Set("DATADIR", previousDataDir) })
+
+	cache := vitality.Cache{
+		LastUpdated:      fixedNow,
+		OldestCommitDate: fixedNow.AddDate(0, 0, -365),
+		FirstEntryDate:   fixedNow.AddDate(0, 0, -1),
+		Authors:          []string{"author@example.com"},
+		Entries: []vitality.DayEntry{
+			{Delta: 0, Commits: 1, Authors: []uint16{0}},
+			{Delta: 1, Commits: 4},
+		},
+		Tags: []vitality.TagEntry{{Delta: 1, Count: 1}},
+	}
+	writeCache(t, dataDir, "example.com", "owner", "repo", cache)
+
+	repo := common.Repository{Name: "owner/repo"}
+	repo.URL.Host = "example.com"
+
+	total, index, err := CalculateRepoActivity(repo, 1, fixedNow)
+	require.NoError(t, err)
+
+	// One author (4), four commits (8), one release (30), one year (30).
+	assert.Equal(t, float64(72), total)
+	assert.Equal(t, map[int]float64{0: 72}, index)
+}
