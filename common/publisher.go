@@ -6,7 +6,7 @@ import (
 	"os"
 
 	internalURL "github.com/italia/publiccode-crawler/v4/internal"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v3"
 )
 
 var fileReaderInject = os.ReadFile
