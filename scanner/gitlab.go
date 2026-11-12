@@ -157,12 +157,12 @@ func addGroupProjects(
 		opts.Page = res.NextPage
 	}
 
-	dgOpts := &gitlab.ListDescendantGroupsOptions{
-		ListOptions: gitlab.ListOptions{Page: 1},
-	}
+	var sgOpts gitlab.ListSubGroupsOptions
+
+	sgOpts.Page = 1
 
 	for {
-		groups, res, err := client.Groups.ListDescendantGroups(group.ID, dgOpts)
+		groups, res, err := client.Groups.ListSubGroups(group.ID, &sgOpts)
 		if err != nil {
 			return err
 		}
@@ -178,7 +178,7 @@ func addGroupProjects(
 			break
 		}
 
-		dgOpts.Page = res.NextPage
+		sgOpts.Page = res.NextPage
 	}
 
 	return nil

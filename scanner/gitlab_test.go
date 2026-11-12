@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -23,7 +24,7 @@ func TestGitLabScannerUsesTargetInstanceAPI(t *testing.T) {
 		switch r.URL.EscapedPath() {
 		case "/api/v4/groups/example":
 			_, _ = w.Write([]byte(`{"id": 1}`))
-		case "/api/v4/groups/1/projects", "/api/v4/groups/1/descendant_groups":
+		case "/api/v4/groups/1/projects", "/api/v4/groups/1/subgroups":
 			_, _ = w.Write([]byte(`[]`))
 		case "/api/v4/projects/example%2Fproject":
 			_, _ = w.Write([]byte(`{}`))
@@ -52,7 +53,7 @@ func TestGitLabScannerUsesTargetInstanceAPI(t *testing.T) {
 	assert.Equal(t, []string{
 		"/api/v4/groups/example",
 		"/api/v4/groups/1/projects",
-		"/api/v4/groups/1/descendant_groups",
+		"/api/v4/groups/1/subgroups",
 		"/api/v4/projects/example%2Fproject",
 	}, requests)
 }
@@ -100,5 +101,63 @@ func TestGenerateGitlabRawURL(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, tc.want, got)
+	}
+}
+
+func TestGitLabScannerListsNestedGroupsOnce(t *testing.T) {
+	for _, groupPath := range []string{"/example", "/"} {
+		t.Run(groupPath, func(t *testing.T) {
+			requests := make(map[string]int)
+			responses := map[string]string{
+				"/api/v4/groups/example?page=":      `{"id":1}`,
+				"/api/v4/groups?page=1":             `[{"id":1}]`,
+				"/api/v4/groups/1/subgroups?page=1": `[{"id":2}]`,
+				"/api/v4/groups/1/subgroups?page=2": `[{"id":4}]`,
+				"/api/v4/groups/2/subgroups?page=1": `[{"id":3}]`,
+				"/api/v4/groups/3/subgroups?page=1": `[]`,
+				"/api/v4/groups/4/subgroups?page=1": `[]`,
+			}
+			for _, id := range []int{1, 2, 3, 4} {
+				responses[fmt.Sprintf("/api/v4/groups/%d/projects?page=1", id)] = fmt.Sprintf(
+					`[{"path_with_namespace":"group%d/project","default_branch":"main","web_url":"https://gitlab.example/group%d/project","http_url_to_repo":"https://gitlab.example/group%d/project.git"}]`, id, id, id)
+			}
+			responses["/api/v4/groups/1/projects?page=2"] = `[{"path_with_namespace":"example/extra","default_branch":"main","web_url":"https://gitlab.example/example/extra","http_url_to_repo":"https://gitlab.example/example/extra.git"}]`
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				key := r.URL.Path + "?page=" + r.URL.Query().Get("page")
+				requests[key]++
+				body, ok := responses[key]
+				if !ok {
+					t.Errorf("unexpected GitLab API request: %s", key)
+					http.NotFound(w, r)
+					return
+				}
+				if key == "/api/v4/groups/1/subgroups?page=1" || key == "/api/v4/groups/1/projects?page=1" {
+					w.Header().Set("X-Next-Page", "2")
+				}
+				if r.URL.Path == "/api/v4/groups" {
+					assert.Equal(t, "true", r.URL.Query().Get("top_level_only"))
+				}
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+
+			groupURL, err := url.Parse(server.URL + groupPath)
+			require.NoError(t, err)
+			repositories := make(chan common.Repository, 16)
+			require.NoError(t, NewGitLabScanner().List(*groupURL, common.Publisher{}, repositories))
+			close(repositories)
+
+			names := make([]string, 0, len(repositories))
+			for repository := range repositories {
+				names = append(names, repository.Name)
+			}
+			assert.ElementsMatch(t, []string{"group1/project", "example/extra", "group2/project", "group3/project", "group4/project"}, names)
+			for key := range responses {
+				if (groupPath == "/" && strings.Contains(key, "/groups/example")) || (groupPath != "/" && key == "/api/v4/groups?page=1") {
+					continue
+				}
+				assert.Equal(t, 1, requests[key], key)
+			}
+		})
 	}
 }
