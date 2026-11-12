@@ -11,7 +11,7 @@ import (
 
 	"github.com/italia/publiccode-crawler/v4/common"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 const publisherDownloadTimeout = 30 * time.Second

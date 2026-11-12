@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/italia/publiccode-crawler/v4/common"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestPublisherDownloadClientSetsTimeout(t *testing.T) {
