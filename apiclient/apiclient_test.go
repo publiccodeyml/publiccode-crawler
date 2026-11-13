@@ -3,6 +3,7 @@ package apiclient
 import (
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -199,7 +200,10 @@ func TestGetSoftware_retriesStalledHeaders(t *testing.T) {
 	software, err := client.GetSoftware("id1")
 
 	assert.Nil(t, software)
-	assert.ErrorContains(t, err, "Client.Timeout exceeded")
+	var timeoutErr net.Error
+	if assert.ErrorAs(t, err, &timeoutErr) {
+		assert.True(t, timeoutErr.Timeout())
+	}
 	assert.Less(t, time.Since(start), testOperationTimeout)
 	assert.EqualValues(t, client.retryableClient.Transport.(*retryablehttp.RoundTripper).Client.RetryMax+1,
 		attempts.Load())
