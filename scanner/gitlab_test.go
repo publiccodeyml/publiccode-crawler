@@ -1,10 +1,12 @@
 package scanner
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -119,9 +121,9 @@ func TestGitLabScannerListsNestedGroupsOnce(t *testing.T) {
 			}
 			for _, id := range []int{1, 2, 3, 4} {
 				responses[fmt.Sprintf("/api/v4/groups/%d/projects?page=1", id)] = fmt.Sprintf(
-					`[{"path_with_namespace":"group%d/project","default_branch":"main","web_url":"https://gitlab.example/group%d/project","http_url_to_repo":"https://gitlab.example/group%d/project.git"}]`, id, id, id)
+					`[{"visibility":"public","path_with_namespace":"group%d/project","default_branch":"main","web_url":"https://gitlab.example/group%d/project","http_url_to_repo":"https://gitlab.example/group%d/project.git"}]`, id, id, id)
 			}
-			responses["/api/v4/groups/1/projects?page=2"] = `[{"path_with_namespace":"example/extra","default_branch":"main","web_url":"https://gitlab.example/example/extra","http_url_to_repo":"https://gitlab.example/example/extra.git"}]`
+			responses["/api/v4/groups/1/projects?page=2"] = `[{"visibility":"public","path_with_namespace":"example/extra","default_branch":"main","web_url":"https://gitlab.example/example/extra","http_url_to_repo":"https://gitlab.example/example/extra.git"}]`
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				key := r.URL.Path + "?page=" + r.URL.Query().Get("page")
 				requests[key]++
@@ -159,5 +161,92 @@ func TestGitLabScannerListsNestedGroupsOnce(t *testing.T) {
 				assert.Equal(t, 1, requests[key], key)
 			}
 		})
+	}
+}
+
+func TestGitLabScannerSkipsIneligibleProjects(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		visibility string
+		archived   bool
+		branch     string
+		want       int
+	}{
+		{"public", "public", false, "main", 1},
+		{"archived", "public", true, "main", 0},
+		{"private", "private", false, "main", 0},
+		{"internal", "internal", false, "main", 0},
+		{"empty", "public", false, "", 0},
+	} {
+		for _, method := range []string{"List", "Scan", "ScanWithoutToken", "ScanUserWithoutToken"} {
+			t.Run(tc.name+"/"+method, func(t *testing.T) {
+				t.Setenv("GITLAB_TOKEN", "test-token")
+				namespace := `{"id":1,"kind":"group","full_path":"example"}`
+				if method == "ScanUserWithoutToken" {
+					namespace = `{"id":5,"kind":"user","full_path":"example"}`
+				}
+				project := fmt.Sprintf(`{"id":7,"path":"project","namespace":%s,"visibility":%q,"archived":%t,"default_branch":%q,"path_with_namespace":"example/project","web_url":"https://gitlab.example/example/project","http_url_to_repo":"https://gitlab.example/example/project.git"}`, namespace, tc.visibility, tc.archived, tc.branch)
+				single := project
+				if strings.HasSuffix(method, "WithoutToken") {
+					t.Setenv("GITLAB_TOKEN", "")
+					// GitLab omits archived from unauthenticated single project responses.
+					var fields map[string]json.RawMessage
+					require.NoError(t, json.Unmarshal([]byte(project), &fields))
+					delete(fields, "archived")
+					body, err := json.Marshal(fields)
+					require.NoError(t, err)
+					single = string(body)
+				}
+				archivedListing := func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, "project", r.URL.Query().Get("search"))
+					if tc.archived {
+						_, _ = fmt.Fprintf(w, `[{"id":3},%s]`, project)
+					} else {
+						_, _ = w.Write([]byte(`[{"id":3}]`))
+					}
+				}
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, os.Getenv("GITLAB_TOKEN"), r.Header.Get("PRIVATE-TOKEN"))
+					archivedOnly := r.URL.Query().Get("archived") == "true"
+					switch r.URL.EscapedPath() {
+					case "/api/v4/groups/example":
+						_, _ = w.Write([]byte(`{"id":1}`))
+					case "/api/v4/groups/1/projects":
+						if archivedOnly {
+							archivedListing(w, r)
+						} else {
+							_, _ = fmt.Fprintf(w, "[%s]", project)
+						}
+					case "/api/v4/users/example/projects":
+						assert.True(t, archivedOnly)
+						archivedListing(w, r)
+					case "/api/v4/groups/1/subgroups":
+						_, _ = w.Write([]byte(`[]`))
+					case "/api/v4/projects/example%2Fproject":
+						_, _ = w.Write([]byte(single))
+					default:
+						t.Errorf("unexpected GitLab API request: %s", r.URL.EscapedPath())
+						http.NotFound(w, r)
+					}
+				}))
+				defer server.Close()
+
+				target, err := url.Parse(server.URL + "/example")
+				require.NoError(t, err)
+				repositories := make(chan common.Repository, 2)
+				scanner := NewGitLabScanner()
+				if method == "List" {
+					err = scanner.List(*target, common.Publisher{}, repositories)
+				} else {
+					target.Path = "/example/project"
+					err = scanner.Scan(*target, common.Publisher{}, repositories)
+				}
+				require.NoError(t, err)
+				require.Len(t, repositories, tc.want)
+				if tc.want > 0 {
+					assert.Equal(t, "example/project", (<-repositories).Name)
+				}
+			})
+		}
 	}
 }
