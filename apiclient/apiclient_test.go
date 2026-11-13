@@ -132,10 +132,46 @@ func TestPatchSoftware_sendsActive(t *testing.T) {
 		_, _ = w.Write([]byte(`{}`))
 	})
 
-	err := client.PatchSoftware("id1", "https://example.org/repo.git", nil, "yml", true)
+	err := client.PatchSoftware("id1", "https://example.org/repo.git", nil, ptr("yml"), true)
 
 	assert.NoError(t, err)
 	assert.Equal(t, true, fields["active"])
+}
+
+func TestPatchSoftware_omitsMissingFile(t *testing.T) {
+	var fields map[string]any
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		fields = patchBody(t, r)
+
+		_, _ = w.Write([]byte(`{}`))
+	})
+
+	err := client.PatchSoftware("id1", "https://example.org/repo.git", nil, nil, true)
+
+	assert.NoError(t, err)
+	assert.NotContains(t, fields, "publiccodeYml")
+	assert.Equal(t, "https://example.org/repo.git", fields["url"])
+}
+
+func TestPatchCatalogSoftware_omitsMissingFile(t *testing.T) {
+	var fields map[string]any
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		fields = patchBody(t, r)
+
+		_, _ = w.Write([]byte(`{}`))
+	})
+
+	err := client.PatchCatalogSoftware("catalog1", "id1", "https://example.org/repo.git", nil, nil, true)
+
+	assert.NoError(t, err)
+	assert.NotContains(t, fields, "publiccodeYml")
+	assert.Equal(t, "https://example.org/repo.git", fields["url"])
+}
+
+func ptr(value string) *string {
+	return &value
 }
 
 func TestPatchCatalogSoftware_sendsActive(t *testing.T) {
@@ -147,7 +183,7 @@ func TestPatchCatalogSoftware_sendsActive(t *testing.T) {
 		_, _ = w.Write([]byte(`{}`))
 	})
 
-	err := client.PatchCatalogSoftware("catalog1", "id1", "https://example.org/repo.git", nil, "yml", true)
+	err := client.PatchCatalogSoftware("catalog1", "id1", "https://example.org/repo.git", nil, ptr("yml"), true)
 
 	assert.NoError(t, err)
 	assert.Equal(t, true, fields["active"])
@@ -264,7 +300,7 @@ func TestPatchSoftware_boundsRetryAfterWait(t *testing.T) {
 		})
 
 	start := time.Now()
-	err := client.PatchSoftware("id1", "https://example.org/repo.git", nil, "yml", true)
+	err := client.PatchSoftware("id1", "https://example.org/repo.git", nil, ptr("yml"), true)
 
 	assert.ErrorContains(t, err, "can't update software")
 	assert.Less(t, time.Since(start), testOperationTimeout)
@@ -285,7 +321,7 @@ func TestPatchCatalogSoftware_retriesWithinTimeouts(t *testing.T) {
 			_, _ = w.Write([]byte(`{}`))
 		})
 
-	err := client.PatchCatalogSoftware("catalog1", "id1", "https://example.org/repo.git", nil, "yml", true)
+	err := client.PatchCatalogSoftware("catalog1", "id1", "https://example.org/repo.git", nil, ptr("yml"), true)
 
 	assert.NoError(t, err)
 	assert.EqualValues(t, 2, attempts.Load())

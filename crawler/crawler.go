@@ -779,15 +779,24 @@ func (c *Crawler) upsertSoftware(
 	// file.
 	active := valid || software.Active
 
-	if !c.DryRun {
-		if catalogID != "" {
-			return c.apiClient.PatchCatalogSoftware(catalogID, software.ID, repoURL, aliases, string(publiccodeYml), active)
-		}
-
-		return c.apiClient.PatchSoftware(software.ID, repoURL, aliases, string(publiccodeYml), active)
+	if c.DryRun {
+		return nil
 	}
 
-	return nil
+	// A file the parser could not read leaves publiccodeYml nil. Keep the
+	// last stored file instead of replacing it with an empty one.
+	var storedYml *string
+
+	if publiccodeYml != nil {
+		yml := string(publiccodeYml)
+		storedYml = &yml
+	}
+
+	if catalogID != "" {
+		return c.apiClient.PatchCatalogSoftware(catalogID, software.ID, repoURL, aliases, storedYml, active)
+	}
+
+	return c.apiClient.PatchSoftware(software.ID, repoURL, aliases, storedYml, active)
 }
 
 // mergeNewAliases appends aliases from newAliases that are not already in existing.
