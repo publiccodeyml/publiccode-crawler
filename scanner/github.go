@@ -57,7 +57,7 @@ func (scanner GitHubScanner) List(
 		return fmt.Errorf("can't list %s: %w", url.String(), ErrGitHubTokenMissing)
 	}
 
-	opt := &github.RepositoryListByOrgOptions{}
+	opt := &github.RepositoryListByOrgOptions{ListOptions: github.ListOptions{PerPage: 100}}
 
 	splitted := strings.Split(strings.Trim(url.Path, "/"), "/")
 	if len(splitted) != 1 {
@@ -70,18 +70,7 @@ func (scanner GitHubScanner) List(
 	Retry:
 		repos, resp, err := scanner.client.Repositories.ListByOrg(context.Background(), orgName, opt)
 
-		var rateLimitError *github.RateLimitError
-		if errors.As(err, &rateLimitError) {
-			log.Infof("GitHub rate limit hit, sleeping until %s", resp.Rate.Reset.Time.String())
-			time.Sleep(time.Until(resp.Rate.Reset.Time))
-
-			goto Retry
-		}
-
-		var abuseRateLimitError *github.AbuseRateLimitError
-		if errors.As(err, &abuseRateLimitError) {
-			secondaryRateLimit(abuseRateLimitError)
-
+		if waitForRateLimit(resp, err) {
 			goto Retry
 		}
 
@@ -123,7 +112,7 @@ func (scanner GitHubScanner) List(
 // publisher and, if it contains a publiccode.yml, sends it as a [common.Repository]
 // repositories channel.
 // It returns any error encountered if any, otherwise nil.
-func (scanner GitHubScanner) Scan( //nolint:funlen // goto retry blocks can't be extracted
+func (scanner GitHubScanner) Scan(
 	url url.URL, publisher common.Publisher, repositories chan common.Repository,
 ) error {
 	log.Debugf("GitHubScanner.Scan(%s)", url.String())
@@ -143,18 +132,7 @@ func (scanner GitHubScanner) Scan( //nolint:funlen // goto retry blocks can't be
 Retry:
 	repo, resp, err := scanner.client.Repositories.Get(context.Background(), orgName, repoName)
 
-	var rateLimitError *github.RateLimitError
-	if errors.As(err, &rateLimitError) {
-		log.Infof("GitHub rate limit hit, sleeping until %s", resp.Rate.Reset.Time.String())
-		time.Sleep(time.Until(resp.Rate.Reset.Time))
-
-		goto Retry
-	}
-
-	var abuseRateLimitError *github.AbuseRateLimitError
-	if errors.As(err, &abuseRateLimitError) {
-		secondaryRateLimit(abuseRateLimitError)
-
+	if waitForRateLimit(resp, err) {
 		goto Retry
 	}
 
@@ -162,23 +140,30 @@ Retry:
 		return fmt.Errorf("can't get repo %s: %w", url.String(), err)
 	}
 
-	if *repo.Private || *repo.Archived {
-		return fmt.Errorf("skipping private or archived repo %s", *repo.FullName)
+	return scanner.scanRepository(repo, url, publisher, repositories)
+}
+
+// scanRepository sends repo to repositories if it contains a publiccode.yml.
+// It takes the repository as returned by the GitHub API, so a listing doesn't
+// need a second request for each of its repositories.
+func (scanner GitHubScanner) scanRepository(
+	repo *github.Repository, url url.URL, publisher common.Publisher, repositories chan common.Repository,
+) error {
+	if repo.GetPrivate() || repo.GetArchived() {
+		return fmt.Errorf("skipping private or archived repo %s", repo.GetFullName())
 	}
 
+	orgName, repoName, ok := strings.Cut(repo.GetFullName(), "/")
+	if !ok {
+		return fmt.Errorf("doesn't look like a GitHub repo name %q", repo.GetFullName())
+	}
+
+Retry:
 	file, _, resp, err := scanner.client.Repositories.GetContents(
 		context.Background(), orgName, repoName, "publiccode.yml", nil,
 	)
-	if errors.As(err, &rateLimitError) {
-		log.Infof("GitHub rate limit hit, sleeping until %s", resp.Rate.Reset.Time.String())
-		time.Sleep(time.Until(resp.Rate.Reset.Time))
 
-		goto Retry
-	}
-
-	if errors.As(err, &abuseRateLimitError) {
-		secondaryRateLimit(abuseRateLimitError)
-
+	if waitForRateLimit(resp, err) {
 		goto Retry
 	}
 
@@ -187,30 +172,51 @@ Retry:
 			return ErrPubliccodeNotFound
 		}
 
-		return fmt.Errorf("[%s]: failed to get publiccode.yml: %w", *repo.FullName, err)
+		return fmt.Errorf("[%s]: failed to get publiccode.yml: %w", repo.GetFullName(), err)
 	}
 
 	// GetContents returns no file content and no error when the path is a directory.
 	if file == nil || file.DownloadURL == nil {
-		return fmt.Errorf("[%s]: failed to get publiccode.yml: not a regular file?", *repo.FullName)
+		return fmt.Errorf("[%s]: failed to get publiccode.yml: not a regular file?", repo.GetFullName())
 	}
 
-	canonicalURL, err := url.Parse(*repo.CloneURL)
+	canonicalURL, err := url.Parse(repo.GetCloneURL())
 	if err != nil {
 		return fmt.Errorf("failed to get canonical repo URL for %s: %w", url.String(), err)
 	}
 
 	repositories <- common.Repository{
-		Name:         *repo.FullName,
+		Name:         repo.GetFullName(),
 		FileRawURL:   *file.DownloadURL,
 		URL:          url,
 		CanonicalURL: *canonicalURL,
-		GitBranch:    *repo.DefaultBranch,
+		GitBranch:    repo.GetDefaultBranch(),
 		Publisher:    publisher,
 		Headers:      make(map[string]string),
 	}
 
 	return nil
+}
+
+// waitForRateLimit sleeps until GitHub accepts requests again when err is a
+// rate limit error, and reports whether the request should be retried.
+func waitForRateLimit(resp *github.Response, err error) bool {
+	var rateLimitError *github.RateLimitError
+	if errors.As(err, &rateLimitError) {
+		log.Infof("GitHub rate limit hit, sleeping until %s", resp.Rate.Reset.Time.String())
+		time.Sleep(time.Until(resp.Rate.Reset.Time))
+
+		return true
+	}
+
+	var abuseRateLimitError *github.AbuseRateLimitError
+	if errors.As(err, &abuseRateLimitError) {
+		secondaryRateLimit(abuseRateLimitError)
+
+		return true
+	}
+
+	return false
 }
 
 func secondaryRateLimit(err *github.AbuseRateLimitError) {
@@ -228,15 +234,15 @@ func secondaryRateLimit(err *github.AbuseRateLimitError) {
 func (scanner GitHubScanner) scanRepositories(
 	repos []*github.Repository, publisher common.Publisher, repositories chan common.Repository,
 ) {
-	for _, r := range repos {
-		repoURL, err := url.Parse(*r.HTMLURL)
+	for _, repo := range repos {
+		repoURL, err := url.Parse(*repo.HTMLURL)
 		if err != nil {
-			log.Errorf("can't parse URL %s: %s", *r.URL, err.Error())
+			log.Errorf("can't parse URL %s: %s", *repo.URL, err.Error())
 
 			continue
 		}
 
-		if err = scanner.Scan(*repoURL, publisher, repositories); err != nil {
+		if err = scanner.scanRepository(repo, *repoURL, publisher, repositories); err != nil {
 			if errors.Is(err, ErrPubliccodeNotFound) {
 				log.Warnf("can't scan repository %s: %s", repoURL.String(), err.Error())
 			} else {

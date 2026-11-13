@@ -178,6 +178,7 @@ func TestGitHubScannerListPaginates(t *testing.T) {
 				}
 				switch r.URL.Path {
 				case "/orgs/account/repos", "/users/account/repos":
+					assert.Equal(t, "100", r.URL.Query().Get("per_page"))
 					page := r.URL.Query().Get("page")
 					pages = append(pages, page)
 					if len(pages) > 2 {
@@ -195,11 +196,9 @@ func TestGitHubScannerListPaginates(t *testing.T) {
 						http.Error(w, `{"message":"unexpected page"}`, http.StatusBadRequest)
 						return
 					}
-					fmt.Fprintf(w, `[{"html_url":"https://github.com/account/%s"}]`, name)
-				case "/repos/account/first", "/repos/account/second":
-					name := strings.TrimPrefix(r.URL.Path, "/repos/")
-					fmt.Fprintf(w, `{"private":false,"archived":false,"full_name":%q,"clone_url":%q,"default_branch":"main"}`,
-						name, "https://github.com/"+name+".git")
+					fmt.Fprintf(w, `[{"html_url":"https://github.com/account/%[1]s","private":false,"archived":false,`+
+						`"full_name":"account/%[1]s","clone_url":"https://github.com/account/%[1]s.git","default_branch":"main"}]`,
+						name)
 				case "/repos/account/first/contents/publiccode.yml", "/repos/account/second/contents/publiccode.yml":
 					fmt.Fprint(w, `{"type":"file","download_url":"https://example.com/publiccode.yml"}`)
 				default:
@@ -257,4 +256,50 @@ func TestGitHubScannerWithoutTokenFailsBeforeRequests(t *testing.T) {
 
 	err = scanner.Scan(*repositoryURL, common.Publisher{}, make(chan common.Repository, 1))
 	require.ErrorIs(t, err, ErrGitHubTokenMissing)
+}
+
+func TestGitHubScannerListReusesListedRepositories(t *testing.T) {
+	var contentRequests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/orgs/org/repos":
+			fmt.Fprint(w, `[
+				{"html_url":"https://github.com/org/public","full_name":"org/public",
+				 "clone_url":"https://github.com/org/public.git","default_branch":"develop"},
+				{"html_url":"https://github.com/org/archived","full_name":"org/archived","archived":true},
+				{"html_url":"https://github.com/org/private","full_name":"org/private","private":true}
+			]`)
+		case "/repos/org/public/contents/publiccode.yml",
+			"/repos/org/archived/contents/publiccode.yml",
+			"/repos/org/private/contents/publiccode.yml":
+			contentRequests = append(contentRequests, r.URL.Path)
+			fmt.Fprint(w, `{"type":"file","download_url":"https://example.com/publiccode.yml"}`)
+		default:
+			t.Errorf("unexpected request path %q", r.URL.Path)
+			http.Error(w, `{"message":"unexpected path"}`, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := github.NewClient(server.Client())
+	baseURL, err := url.Parse(server.URL + "/")
+	require.NoError(t, err)
+	client.BaseURL = baseURL
+	scanner := GitHubScanner{client: client}
+	orgURL, err := url.Parse("https://github.com/org")
+	require.NoError(t, err)
+	repositories := make(chan common.Repository, 3)
+
+	err = scanner.List(*orgURL, common.Publisher{}, repositories)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/repos/org/public/contents/publiccode.yml"}, contentRequests)
+	require.Len(t, repositories, 1)
+
+	repository := <-repositories
+	assert.Equal(t, "org/public", repository.Name)
+	assert.Equal(t, "https://github.com/org/public", repository.URL.String())
+	assert.Equal(t, "https://github.com/org/public.git", repository.CanonicalURL.String())
+	assert.Equal(t, "develop", repository.GitBranch)
 }
