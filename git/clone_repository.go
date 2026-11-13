@@ -10,12 +10,12 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/italia/publiccode-crawler/v4/common"
 	"github.com/italia/publiccode-crawler/v4/git/vitality"
 	"github.com/italia/publiccode-crawler/v4/metrics"
 	"github.com/spf13/viper"
@@ -23,8 +23,23 @@ import (
 
 var cloneTimeout = 30 * time.Second
 
-func vitalityCachePath(hostname, vendor, repo string) string {
-	return filepath.Join(viper.GetString("DATADIR"), "repos", hostname, vendor, repo, "vitality.json")
+// vitalityCachePath keeps every namespace component of the repository
+// name, so sibling projects in nested GitLab groups get separate caches.
+func vitalityCachePath(hostname, name string) (string, error) {
+	components := strings.Split(name, "/")
+	if len(components) < 2 { //nolint:mnd // owner and repository
+		return "", fmt.Errorf("invalid repository name %q: expected owner/repository", name)
+	}
+
+	for _, component := range components {
+		if component == "" || component == "." || component == ".." || strings.Contains(component, `\`) {
+			return "", fmt.Errorf("invalid repository name %q: bad path component %q", name, component)
+		}
+	}
+
+	parts := append([]string{viper.GetString("DATADIR"), "repos", hostname}, components...)
+
+	return filepath.Join(append(parts, "vitality.json")...), nil
 }
 
 func CloneRepository(hostname, name, gitURL, index string) error {
@@ -36,8 +51,10 @@ func CloneRepository(hostname, name, gitURL, index string) error {
 		return errors.New("cannot clone a repository without git URL")
 	}
 
-	vendor, repo := common.SplitFullName(name)
-	cachePath := vitalityCachePath(hostname, vendor, repo)
+	cachePath, err := vitalityCachePath(hostname, name)
+	if err != nil {
+		return err
+	}
 
 	existing := loadExistingCache(cachePath)
 

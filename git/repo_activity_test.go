@@ -70,7 +70,7 @@ func TestCloneRepositoryFallbackTimeout(t *testing.T) {
 	viper.Set("DATADIR", dataDir)
 	cache, err := vitality.Marshal(vitality.Cache{LastUpdated: time.Now()})
 	require.NoError(t, err)
-	cachePath := vitalityCachePath("example.com", "owner", "repository")
+	cachePath := mustVitalityCachePath(t, "example.com", "owner/repository")
 	require.NoError(t, os.MkdirAll(filepath.Dir(cachePath), 0o755))
 	require.NoError(t, os.WriteFile(cachePath, cache, 0o600))
 

@@ -37,7 +37,7 @@ func TestCloneRepositoryUpdatesVitalityCache(t *testing.T) {
 	require.NoError(t, CloneRepository(host, name, repositoryURL, "test"))
 	assert.Empty(t, vitalityTempDirectories(t, tmpDir))
 
-	cachePath := vitalityCachePath(host, "owner", "repository")
+	cachePath := mustVitalityCachePath(t, host, "owner/repository")
 	assert.Equal(t, uint32(1), vitalityCommitCount(t, cachePath))
 	setVitalityCacheLastUpdated(t, cachePath, fixedNow)
 
@@ -71,7 +71,7 @@ func TestCloneRepositoryKeepsCacheWhenNoNewCommits(t *testing.T) {
 	require.NoError(t, CloneRepository(host, name, repositoryURL, "test"))
 	assert.Empty(t, vitalityTempDirectories(t, tmpDir))
 
-	cachePath := vitalityCachePath(host, "owner", "repository")
+	cachePath := mustVitalityCachePath(t, host, "owner/repository")
 	assert.Equal(t, uint32(1), vitalityCommitCount(t, cachePath))
 }
 
@@ -96,7 +96,7 @@ func TestCloneRepositoryKeepsCommitsBehindShallowMerge(t *testing.T) {
 	repositoryURL := "file://" + repositoryPath
 	require.NoError(t, CloneRepository(host, name, repositoryURL, "test"))
 
-	cachePath := vitalityCachePath(host, "owner", "repository")
+	cachePath := mustVitalityCachePath(t, host, "owner/repository")
 	setVitalityCacheLastUpdated(t, cachePath, fixedNow)
 
 	worktree, err := repository.Worktree()
@@ -237,7 +237,7 @@ func TestCloneRepositoryCountsReleaseTags(t *testing.T) {
 	assert.ElementsMatch(t, []plumbing.Hash{first.Hash(), first.Hash(), first.Hash(), second.Hash()}, hashes)
 
 	require.NoError(t, CloneRepository("example.test", "owner/releases", "file://"+repositoryPath, "test"))
-	data, err := os.ReadFile(vitalityCachePath("example.test", "owner", "releases"))
+	data, err := os.ReadFile(mustVitalityCachePath(t, "example.test", "owner/releases"))
 	require.NoError(t, err)
 	cache, err := vitality.Unmarshal(data)
 	require.NoError(t, err)
