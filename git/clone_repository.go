@@ -37,6 +37,15 @@ func vitalityCachePath(hostname, name string) (string, error) {
 		}
 	}
 
+	// Keep the legacy owner/repository layout. Deeper components must not
+	// collide with its cache file, or with a cache in a parent namespace.
+	for idx := 2; idx < len(components); idx++ {
+		components[idx] = strings.ReplaceAll(components[idx], "%", "%25")
+		if components[idx] == "vitality.json" {
+			components[idx] = "%76itality.json"
+		}
+	}
+
 	parts := append([]string{viper.GetString("DATADIR"), "repos", hostname}, components...)
 
 	return filepath.Join(append(parts, "vitality.json")...), nil

@@ -155,3 +155,57 @@ func TestCalculateRepoActivityRejectsMalformedName(t *testing.T) {
 
 	assert.ErrorContains(t, err, "invalid repository name")
 }
+
+func TestCloneRepositoryWithLegacyCachePathCollision(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("DATADIR", t.TempDir())
+	t.Chdir("..")
+
+	const host = "gitlab.example.test"
+
+	source := filepath.Join(t.TempDir(), "source")
+	repository, err := gogit.PlainInit(source, false)
+	require.NoError(t, err)
+	commitToRepository(t, repository, "fresh", fixedNow)
+
+	legacy, err := vitality.Marshal(vitality.Cache{
+		LastUpdated:      fixedNow,
+		OldestCommitDate: fixedNow.AddDate(-1, 0, 0),
+		FirstEntryDate:   fixedNow,
+		Authors:          []string{"legacy@example.test"},
+		Entries:          []vitality.DayEntry{{Commits: 99, Authors: []uint16{0}}},
+	})
+	require.NoError(t, err)
+	legacyPath := mustVitalityCachePath(t, host, "org/team")
+	require.NoError(t, os.MkdirAll(filepath.Dir(legacyPath), 0o755))
+	require.NoError(t, os.WriteFile(legacyPath, legacy, 0o600))
+
+	paths := map[string]bool{legacyPath: true}
+	for _, name := range []string{
+		"org/team/app",
+		"org/team/vitality.json",
+		"org/team/vitality.json/app",
+		"org/team/%76itality.json",
+		"org/team/%2576itality.json",
+		"org/team/app/vitality.json",
+	} {
+		path := mustVitalityCachePath(t, host, name)
+		require.False(t, paths[path], "duplicate cache path for %s", name)
+		paths[path] = true
+		require.NoError(t, CloneRepository(host, name, "file://"+source, "test"))
+		assert.Equal(t, uint32(1), vitalityCommitCount(t, path))
+		cache := loadExistingCache(path)
+		require.NotNil(t, cache)
+		assert.Equal(t, []string{"test@example.test"}, cache.Authors)
+
+		repo := common.Repository{Name: name}
+		repo.URL.Host = host
+		_, _, err := CalculateRepoActivity(repo, 1, fixedNow)
+		require.NoError(t, err)
+	}
+
+	preserved, err := os.ReadFile(legacyPath)
+	require.NoError(t, err)
+	assert.Equal(t, legacy, preserved)
+}
