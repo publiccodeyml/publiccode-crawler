@@ -42,8 +42,10 @@ func CalculateRepoActivity(repository common.Repository, days int, now time.Time
 		return 0, nil, errors.New("cannot calculate repository activity without name")
 	}
 
-	vendor, repo := common.SplitFullName(repository.Name)
-	path := vitalityCachePath(repository.URL.Host, vendor, repo)
+	path, err := vitalityCachePath(repository.URL.Host, repository.Name)
+	if err != nil {
+		return 0, nil, err
+	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
