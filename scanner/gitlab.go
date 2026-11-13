@@ -94,7 +94,65 @@ func (scanner GitLabScanner) Scan(
 		return err
 	}
 
+	if !prj.Archived && prj.Visibility == gitlab.PublicVisibility {
+		if prj.Archived, err = isArchived(git, *prj); err != nil {
+			return fmt.Errorf("can't get archive status of GitLab project '%s': %w", projectName, err)
+		}
+	}
+
 	return addProject(&url, *prj, publisher, repositories)
+}
+
+// isArchived looks the project up among the archived projects of its namespace.
+// GitLab leaves archived out of single project responses to anonymous clients,
+// so a missing field reads as false, while namespace listings can still filter
+// on it.
+func isArchived(client *gitlab.Client, project gitlab.Project) (bool, error) {
+	if project.Namespace == nil {
+		return false, nil
+	}
+
+	archived := true
+	search := project.Path
+	listOptions := gitlab.ListOptions{Page: 1}
+
+	for {
+		var (
+			projects []*gitlab.Project
+			res      *gitlab.Response
+			err      error
+		)
+
+		if project.Namespace.Kind == "user" {
+			projects, res, err = client.Projects.ListUserProjects(project.Namespace.FullPath, &gitlab.ListProjectsOptions{
+				ListOptions: listOptions,
+				Archived:    &archived,
+				Search:      &search,
+			})
+		} else {
+			projects, res, err = client.Groups.ListGroupProjects(project.Namespace.ID, &gitlab.ListGroupProjectsOptions{
+				ListOptions: listOptions,
+				Archived:    &archived,
+				Search:      &search,
+			})
+		}
+
+		if err != nil {
+			return false, err
+		}
+
+		for _, prj := range projects {
+			if prj.ID == project.ID {
+				return true, nil
+			}
+		}
+
+		if res.NextPage == 0 {
+			return false, nil
+		}
+
+		listOptions.Page = res.NextPage
+	}
 }
 
 func gitlabAPIURL(gitlabURL url.URL) string {
@@ -188,6 +246,10 @@ func addGroupProjects(
 func addProject(
 	originalURL *url.URL, project gitlab.Project, publisher common.Publisher, repositories chan common.Repository,
 ) error {
+	if project.Archived || project.Visibility != gitlab.PublicVisibility {
+		return nil
+	}
+
 	// Join file raw URL string.
 	rawURL, err := generateGitlabRawURL(project.WebURL, project.DefaultBranch)
 	if err != nil {
