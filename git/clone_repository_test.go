@@ -191,3 +191,56 @@ func setVitalityCacheLastUpdated(t *testing.T, cachePath string, updated time.Ti
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(cachePath, data, 0o600))
 }
+
+func TestCloneRepositoryCountsReleaseTags(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("DATADIR", t.TempDir())
+
+	repositoryPath := filepath.Join(t.TempDir(), "source")
+	repository, err := gogit.PlainInit(repositoryPath, false)
+	require.NoError(t, err)
+
+	commitToRepository(t, repository, "first", fixedNow.AddDate(0, 0, -2))
+	first, err := repository.Head()
+	require.NoError(t, err)
+	_, err = repository.CreateTag("v1.0.0", first.Hash(), nil)
+	require.NoError(t, err)
+	annotated, err := repository.CreateTag("v1.0.1", first.Hash(), &gogit.CreateTagOptions{
+		Tagger:  &object.Signature{Name: "Release Author", Email: "release@example.test", When: fixedNow},
+		Message: "First annotated release",
+	})
+	require.NoError(t, err)
+
+	_, err = repository.CreateTag("v1.0.2", annotated.Hash(), &gogit.CreateTagOptions{
+		Tagger:  &object.Signature{Name: "Release Author", Email: "release@example.test", When: fixedNow},
+		Message: "Nested annotated release",
+	})
+	require.NoError(t, err)
+
+	commitToRepository(t, repository, "second", fixedNow.AddDate(0, 0, -1))
+	second, err := repository.Head()
+	require.NoError(t, err)
+	_, err = repository.CreateTag("v2.0.0", second.Hash(), &gogit.CreateTagOptions{
+		Tagger:  &object.Signature{Name: "Release Author", Email: "release@example.test", When: fixedNow},
+		Message: "Second annotated release",
+	})
+	require.NoError(t, err)
+
+	tags, err := extractAllTagsCommit(repository)
+	require.NoError(t, err)
+	require.Len(t, tags, 4)
+	hashes := make([]plumbing.Hash, 0, len(tags))
+	for _, tag := range tags {
+		hashes = append(hashes, tag.Hash)
+	}
+	assert.ElementsMatch(t, []plumbing.Hash{first.Hash(), first.Hash(), first.Hash(), second.Hash()}, hashes)
+
+	require.NoError(t, CloneRepository("example.test", "owner/releases", "file://"+repositoryPath, "test"))
+	data, err := os.ReadFile(vitalityCachePath("example.test", "owner", "releases"))
+	require.NoError(t, err)
+	cache, err := vitality.Unmarshal(data)
+	require.NoError(t, err)
+	assert.True(t, cache.FirstEntryDate.Equal(fixedNow.AddDate(0, 0, -2).Truncate(24*time.Hour)))
+	assert.Equal(t, []vitality.TagEntry{{Delta: 0, Count: 3}, {Delta: 1, Count: 1}}, cache.Tags)
+}
