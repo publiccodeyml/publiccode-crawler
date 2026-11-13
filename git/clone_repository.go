@@ -428,10 +428,22 @@ func extractAllTagsCommit(repository *gogit.Repository) ([]*object.Commit, error
 	}
 
 	err = tagrefs.ForEach(func(ref *plumbing.Reference) error {
-		if !ref.Hash().IsZero() {
-			tagObject, _ := repository.CommitObject(ref.Hash())
-			if tagObject != nil {
-				allTags = append(allTags, tagObject)
+		hash := ref.Hash()
+		for !hash.IsZero() {
+			target, err := repository.Object(plumbing.AnyObject, hash)
+			if err != nil {
+				return nil //nolint:nilerr // Tags that do not resolve to commits are not releases.
+			}
+
+			switch target := target.(type) {
+			case *object.Tag:
+				hash = target.Target
+			case *object.Commit:
+				allTags = append(allTags, target)
+
+				return nil
+			default:
+				return nil
 			}
 		}
 
