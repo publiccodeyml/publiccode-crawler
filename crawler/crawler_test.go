@@ -2,7 +2,6 @@ package crawler
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -299,59 +298,107 @@ func runGit(t *testing.T, dir string, args ...string) {
 	require.NoError(t, command.Run())
 }
 
-func TestProcessRepo_skipsParserDownloadFailure(t *testing.T) {
+func TestProcessRepo_validatesFetchedFile(t *testing.T) {
+	const template = `publiccodeYmlVersion: "0"
+name: Crawler test
+url: "REPOSITORY_URL"
+releaseDate: "2026-01-01"
+platforms: [web]
+developmentStatus: stable
+softwareType: standalone/other
+description:
+  en:
+    shortDescription: A test application
+    longDescription: An application used to check that the crawler validates and stores the file it has already downloaded. Its description and relative screenshot must survive validation without fetching a second copy of the manifest.
+    features: [Crawling repositories]
+    screenshots: [assets/screenshot.png]
+legal:
+  license: AGPL-3.0-or-later
+maintenance:
+  type: none
+localisation:
+  localisationReady: false
+  availableLanguages: [en]
+`
 	for _, publisherID := range []string{"main", "other"} {
-		for _, existing := range []bool{false, true} {
-			t.Run(fmt.Sprintf("publisher=%s/existing=%t", publisherID, existing), func(t *testing.T) {
-				viper.Set("MAIN_PUBLISHER_ID", "main")
-				t.Cleanup(viper.Reset)
+		t.Run(publisherID, func(t *testing.T) {
+			viper.Set("MAIN_PUBLISHER_ID", "main")
+			viper.Set("SKIP_VITALITY", true)
+			t.Cleanup(viper.Reset)
 
-				var downloads atomic.Int32
-				manifest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					downloads.Add(1)
-					_, _ = w.Write([]byte("publiccodeYmlVersion: \"0.4\"\n"))
-				}))
-				t.Cleanup(manifest.Close)
+			var manifest string
+			var downloads, screenshots atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api":
+					http.SetCookie(w, &http.Cookie{Name: "_gitlab_session", Value: "test"})
+				case "/org/repo":
+					w.WriteHeader(http.StatusOK)
+				case "/raw/main/publiccode.yml":
+					if downloads.Add(1) > 1 {
+						http.Error(w, "rate limited", http.StatusTooManyRequests)
 
-				var entries string
-				var writes int
-				crawler := newTestCrawler(t, func(w http.ResponseWriter, r *http.Request) {
-					switch {
-					case r.Method == http.MethodGet && r.URL.Path == "/software":
-						if existing {
-							_, _ = w.Write([]byte(`{"data":[{"id":"id1","active":true}]}`))
-						} else {
-							_, _ = w.Write([]byte(`{"data":[]}`))
-						}
-					case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/logs"):
-						var payload struct {
-							Message string `json:"message"`
-						}
-						assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
-						entries = payload.Message
-					default:
-						writes++
+						return
 					}
-				})
+					assert.Equal(t, "file-token", r.Header.Get("Authorization"))
+					_, _ = w.Write([]byte(manifest))
+				case "/raw/main/assets/screenshot.png":
+					screenshots.Add(1)
+					w.WriteHeader(http.StatusOK)
+				default:
+					t.Errorf("unexpected asset request: %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(server.Close)
+			manifest = strings.ReplaceAll(template, "REPOSITORY_URL", server.URL+"/org/repo")
 
-				// The first fetch succeeds, but the parser refuses the second
-				// download because its client blocks loopback addresses.
-				repoURL, err := url.Parse("https://github.com/org/repo")
-				assert.NoError(t, err)
-				before := metrics.GetCounterValue("repository_good_publiccodeyml", crawler.Index)
-				crawler.ProcessRepo(common.Repository{
-					Name: "org/repo", URL: *repoURL, CanonicalURL: *repoURL,
-					FileRawURL: manifest.URL + "/publiccode.yml",
-					Publisher:  common.Publisher{ID: publisherID},
-				})
-
-				assert.EqualValues(t, 1, downloads.Load())
-				assert.Contains(t, entries, "parsing error: can't GET")
-				assert.Contains(t, entries, "non-public")
-				assert.NotContains(t, entries, "GOOD publiccode.yml")
-				assert.Equal(t, before, metrics.GetCounterValue("repository_good_publiccodeyml", crawler.Index))
-				assert.Zero(t, writes, "failed parser downloads must not create or update software")
+			var saved apiclient.Software
+			var patches int
+			crawler := newTestCrawler(t, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/software":
+					_, _ = w.Write([]byte(`{"data":[{"id":"id1","active":true}]}`))
+				case r.Method == http.MethodPatch && r.URL.Path == "/software/id1":
+					patches++
+					assert.NoError(t, json.NewDecoder(r.Body).Decode(&saved))
+					_, _ = w.Write([]byte(`{}`))
+				case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/logs"):
+					_, _ = w.Write([]byte(`{}`))
+				default:
+					t.Errorf("unexpected catalog request: %s %s", r.Method, r.URL.Path)
+				}
 			})
-		}
+			crawler.newParser = func(config publiccode.ParserConfig) (*publiccode.Parser, error) {
+				assert.Equal(t, server.URL+"/raw/main", config.BaseURL)
+				config.AllowNetworkToPrivateHosts = true
+
+				return publiccode.NewParser(config)
+			}
+			repoURL, err := url.Parse(server.URL + "/org/repo")
+			require.NoError(t, err)
+			before := metrics.GetCounterValue("repository_good_publiccodeyml", crawler.Index)
+			crawler.ProcessRepo(common.Repository{
+				Name: "org/repo", URL: *repoURL, CanonicalURL: *repoURL,
+				FileRawURL: server.URL + "/raw/main/publiccode.yml",
+				Headers:    map[string]string{"Authorization": "file-token"},
+				Publisher:  common.Publisher{ID: publisherID},
+			})
+
+			assert.EqualValues(t, 1, downloads.Load())
+			assert.Positive(t, screenshots.Load(), "relative screenshots must be checked beside the manifest")
+			assert.Equal(t, before+1, metrics.GetCounterValue("repository_good_publiccodeyml", crawler.Index))
+			require.Equal(t, 1, patches)
+			assert.True(t, saved.Active)
+			assert.Equal(t, repoURL.String(), saved.URL)
+
+			parser, err := publiccode.NewParser(publiccode.ParserConfig{DisableNetwork: true, DisableExternalChecks: true})
+			require.NoError(t, err)
+			original, err := parser.ParseStream(strings.NewReader(manifest))
+			require.NoError(t, err)
+			stored, err := parser.ParseStream(strings.NewReader(saved.PubliccodeYml))
+			require.NoError(t, err)
+			assert.Equal(t, original, stored)
+		})
 	}
 }
