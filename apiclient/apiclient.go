@@ -385,15 +385,11 @@ func (clt APIClient) PostCatalogSoftware(
 }
 
 // PatchCatalogSoftware updates a software resource within the given catalog.
+// A nil publiccodeYml leaves the stored file unchanged.
 func (clt APIClient) PatchCatalogSoftware(
-	catalogID string, softwareID string, softwareURL string, aliases []string, publiccodeYml string, active bool,
+	catalogID string, softwareID string, softwareURL string, aliases []string, publiccodeYml *string, active bool,
 ) error {
-	body, err := json.Marshal(map[string]any{
-		"publiccodeYml": publiccodeYml,
-		"url":           softwareURL,
-		"aliases":       aliases,
-		"active":        active,
-	})
+	body, err := json.Marshal(softwarePatch(softwareURL, aliases, publiccodeYml, active))
 	if err != nil {
 		return fmt.Errorf("can't update software in catalog %s: %w", catalogID, err)
 	}
@@ -541,16 +537,11 @@ func (clt APIClient) PostSoftware(url string, aliases []string, publiccodeYml st
 }
 
 // PatchSoftware updates a software resource with the given fields and returns
-// any error encountered.
+// any error encountered. A nil publiccodeYml leaves the stored file unchanged.
 func (clt APIClient) PatchSoftware(
-	softwareID string, url string, aliases []string, publiccodeYml string, active bool,
+	softwareID string, url string, aliases []string, publiccodeYml *string, active bool,
 ) error {
-	body, err := json.Marshal(map[string]any{
-		"publiccodeYml": publiccodeYml,
-		"url":           url,
-		"aliases":       aliases,
-		"active":        active,
-	})
+	body, err := json.Marshal(softwarePatch(url, aliases, publiccodeYml, active))
 	if err != nil {
 		return fmt.Errorf("can't update software: %w", err)
 	}
@@ -567,6 +558,21 @@ func (clt APIClient) PatchSoftware(
 	}
 
 	return nil
+}
+
+func softwarePatch(url string, aliases []string, publiccodeYml *string, active bool) map[string]any {
+	fields := map[string]any{
+		"url":     url,
+		"aliases": aliases,
+		"active":  active,
+	}
+
+	// The API keeps any field missing from a PATCH body.
+	if publiccodeYml != nil {
+		fields["publiccodeYml"] = *publiccodeYml
+	}
+
+	return fields
 }
 
 // PostSoftwareLog creates a new software log with the given fields and returns

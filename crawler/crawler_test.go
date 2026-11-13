@@ -290,6 +290,48 @@ func TestProcessRepo_usesCanonicalURLAfterParseFailure(t *testing.T) {
 	assert.FileExists(t, filepath.Join(dataDir, "repos", repositoryURL.Host, "owner", "repository", "vitality.json"))
 }
 
+func TestProcessRepo_keepsStoredFileOnSyntaxError(t *testing.T) {
+	viper.Set("MAIN_PUBLISHER_ID", "")
+	viper.Set("SKIP_VITALITY", true)
+	t.Cleanup(viper.Reset)
+
+	var patched map[string]any
+	var patches int
+	crawler := newTestCrawler(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/publiccode.yml":
+			_, _ = w.Write([]byte("not: [valid"))
+		case r.Method == http.MethodGet && r.URL.Path == "/software":
+			_, _ = w.Write([]byte(`{"data":[{"id":"sw1","active":true,"publiccodeYml":"name: Stored"}]}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/software/sw1":
+			patches++
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&patched))
+			_, _ = w.Write([]byte(`{}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/logs"):
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	crawler.newParser = func(config publiccode.ParserConfig) (*publiccode.Parser, error) {
+		config.AllowNetworkToPrivateHosts = true
+
+		return publiccode.NewParser(config)
+	}
+
+	repoURL, err := url.Parse("https://example.test/owner/repo")
+	require.NoError(t, err)
+	crawler.ProcessRepo(common.Repository{
+		Name: "owner/repo", URL: *repoURL, CanonicalURL: *repoURL,
+		FileRawURL: viper.GetString("API_BASEURL") + "/publiccode.yml",
+	})
+
+	require.Equal(t, 1, patches)
+	assert.NotContains(t, patched, "publiccodeYml")
+	assert.Equal(t, true, patched["active"])
+	assert.Equal(t, repoURL.String(), patched["url"])
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 
