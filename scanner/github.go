@@ -17,26 +17,31 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// ErrGitHubTokenMissing is returned when a GitHub source is scanned
+// without a GitHub API token.
+var ErrGitHubTokenMissing = errors.New("please set GITHUB_TOKEN, it's needed to use the GitHub API")
+
 type GitHubScanner struct {
 	client *github.Client
+	// Sources on other platforms don't need a GitHub token, so a missing one
+	// only fails the GitHub sources.
+	missingToken bool
 }
 
 // NewGitHubScanner returns a new GitHubScanner using the
-// authentication token from the GITHUB_TOKEN environment variable or,
-// if not set, the tokens in domains.yml.
+// authentication token from the GITHUB_TOKEN environment variable.
 func NewGitHubScanner() GitHubScanner {
-	ctx := context.Background()
-
 	token := viper.GetString("GITHUB_TOKEN")
+	if token == "" {
+		return GitHubScanner{client: github.NewClient(nil), missingToken: true}
+	}
 
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
-	tc := oauth2.NewClient(ctx, ts)
+	tc := oauth2.NewClient(context.Background(), ts)
 
-	client := github.NewClient(tc)
-
-	return GitHubScanner{client: client}
+	return GitHubScanner{client: github.NewClient(tc)}
 }
 
 // List scans a GitHub organization represented by url, associated to
@@ -47,6 +52,10 @@ func (scanner GitHubScanner) List(
 	url url.URL, publisher common.Publisher, repositories chan common.Repository,
 ) error {
 	log.Debugf("GitHubScanner.List(%s)", url.String())
+
+	if scanner.missingToken {
+		return fmt.Errorf("can't list %s: %w", url.String(), ErrGitHubTokenMissing)
+	}
 
 	opt := &github.RepositoryListByOrgOptions{}
 
@@ -136,6 +145,10 @@ func (scanner GitHubScanner) Scan( //nolint:funlen // goto retry blocks can't be
 	url url.URL, publisher common.Publisher, repositories chan common.Repository,
 ) error {
 	log.Debugf("GitHubScanner.Scan(%s)", url.String())
+
+	if scanner.missingToken {
+		return fmt.Errorf("can't scan %s: %w", url.String(), ErrGitHubTokenMissing)
+	}
 
 	splitted := strings.Split(strings.TrimSuffix(strings.Trim(url.Path, "/"), ".git"), "/")
 	if len(splitted) != 2 {

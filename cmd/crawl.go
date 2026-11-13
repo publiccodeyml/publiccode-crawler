@@ -6,7 +6,6 @@ import (
 	"github.com/italia/publiccode-crawler/v4/crawler"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func init() {
@@ -34,10 +33,6 @@ crawl directory/*.yml`,
 
 	Args: cobra.MinimumNArgs(0),
 	Run: func(_ *cobra.Command, args []string) {
-		if token := viper.GetString("GITHUB_TOKEN"); token == "" {
-			log.Fatal("Please set GITHUB_TOKEN, it's needed to use the GitHub API'")
-		}
-
 		crwlr := crawler.NewCrawler(dryRun)
 
 		if len(args) > 0 {

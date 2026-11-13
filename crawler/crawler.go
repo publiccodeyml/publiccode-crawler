@@ -375,10 +375,10 @@ func (c *Crawler) ProcessRepo(repository common.Repository) { //nolint:funlen,go
 
 	//nolint:godox
 	// FIXME: this is hardcoded for now, because it requires changes to libpubliccode.
-	domain := publiccode.Domain{
-		Host:        "github.com",
-		UseTokenFor: []string{"github.com", "api.github.com", "raw.githubusercontent.com"},
-		BasicAuth:   []string{viper.GetString("GITHUB_TOKEN")},
+	domain := publiccode.Domain{Host: "github.com"}
+	if token := viper.GetString("GITHUB_TOKEN"); token != "" {
+		domain.UseTokenFor = []string{"github.com", "api.github.com", "raw.githubusercontent.com"}
+		domain.BasicAuth = []string{token}
 	}
 
 	var parser *publiccode.Parser

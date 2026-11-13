@@ -31,8 +31,10 @@ from a Docker container.
    ./publiccode-crawler crawl
    ```
 
-   `GITHUB_TOKEN` is required for GitHub API requests. `API_BEARER_TOKEN`
-   authorizes the requests that save crawl results to open-catalog-api.
+   `GITHUB_TOKEN` is required only to crawl sources hosted on GitHub. Without
+   it, GitHub sources fail and the other sources are still crawled.
+   `API_BEARER_TOKEN` authorizes the requests that save crawl results to
+   open-catalog-api.
    Environment variables take precedence over values in `config.toml`.
 
 ### Docker

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-github/v68/github"
 	"github.com/italia/publiccode-crawler/v4/common"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -230,4 +231,30 @@ func TestGitHubScannerListPaginates(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGitHubScannerWithoutTokenFailsBeforeRequests(t *testing.T) {
+	viper.Set("GITHUB_TOKEN", "")
+	t.Cleanup(viper.Reset)
+
+	scanner := NewGitHubScanner()
+	scanner.client = github.NewClient(&http.Client{Transport: roundTripperFunc(
+		func(request *http.Request) (*http.Response, error) {
+			t.Fatalf("unexpected request to %s", request.URL)
+
+			return nil, nil
+		},
+	)})
+
+	orgURL, err := url.Parse("https://github.com/org")
+	require.NoError(t, err)
+
+	repositoryURL, err := url.Parse("https://github.com/org/repository")
+	require.NoError(t, err)
+
+	err = scanner.List(*orgURL, common.Publisher{}, make(chan common.Repository, 1))
+	require.ErrorIs(t, err, ErrGitHubTokenMissing)
+
+	err = scanner.Scan(*repositoryURL, common.Publisher{}, make(chan common.Repository, 1))
+	require.ErrorIs(t, err, ErrGitHubTokenMissing)
 }
