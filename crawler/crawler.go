@@ -50,6 +50,8 @@ type Crawler struct {
 
 	apiClient apiclient.APIClient
 	newParser func(publiccode.ParserConfig) (*publiccode.Parser, error)
+
+	startMetricsServer func()
 }
 
 // NewCrawler initializes a new Crawler object and connects to Elasticsearch (if dryRun == false).
@@ -162,11 +164,15 @@ func (c *Crawler) CrawlPublishers(publishers []common.Publisher) error {
 
 	log.Infof("Scanning %d publishers (%d catalog sources)", len(publishers), sourcesNum)
 
-	// Process every item in publishers.
-	for _, publisher := range publishers {
-		c.publishersWg.Add(1)
-		c.ScanPublisher(publisher)
-	}
+	// Scan publishers one at a time, but in the background: crawl() must
+	// start draining the repositories channel before discovery fills it.
+	c.publishersWg.Add(len(publishers))
+
+	go func() {
+		for _, publisher := range publishers {
+			c.ScanPublisher(publisher)
+		}
+	}()
 
 	// Close the repositories channel when all the publisher goroutines are done
 	go func() {
@@ -610,8 +616,13 @@ func (c *Crawler) scanJSONCatalog(
 func (c *Crawler) crawl() error {
 	reposChan := make(chan common.Repository)
 
+	startMetricsServer := metrics.StartPrometheusMetricsServer
+	if c.startMetricsServer != nil {
+		startMetricsServer = c.startMetricsServer
+	}
+
 	// Start the metrics server.
-	go metrics.StartPrometheusMetricsServer()
+	go startMetricsServer()
 
 	defer c.publishersWg.Wait()
 
