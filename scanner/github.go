@@ -107,25 +107,7 @@ func (scanner GitHubScanner) List(
 			)
 		}
 
-		// Add repositories to the channel that will perform the check on everyone.
-		for _, r := range repos {
-			repoURL, err := url.Parse(*r.HTMLURL)
-			if err != nil {
-				log.Errorf("can't parse URL %s: %s", *r.URL, err.Error())
-
-				continue
-			}
-
-			if err = scanner.Scan(*repoURL, publisher, repositories); err != nil {
-				if errors.Is(err, ErrPubliccodeNotFound) {
-					log.Warnf("can't scan repository %s: %s", repoURL.String(), err.Error())
-				} else {
-					log.Errorf("can't scan repository %s: %s", repoURL.String(), err.Error())
-				}
-
-				continue
-			}
-		}
+		scanner.scanRepositories(repos, publisher, repositories)
 
 		if resp.NextPage == 0 {
 			break
@@ -241,4 +223,27 @@ func secondaryRateLimit(err *github.AbuseRateLimitError) {
 
 	log.Infof("GitHub secondary rate limit hit, for %s", duration)
 	time.Sleep(duration)
+}
+
+func (scanner GitHubScanner) scanRepositories(
+	repos []*github.Repository, publisher common.Publisher, repositories chan common.Repository,
+) {
+	for _, r := range repos {
+		repoURL, err := url.Parse(*r.HTMLURL)
+		if err != nil {
+			log.Errorf("can't parse URL %s: %s", *r.URL, err.Error())
+
+			continue
+		}
+
+		if err = scanner.Scan(*repoURL, publisher, repositories); err != nil {
+			if errors.Is(err, ErrPubliccodeNotFound) {
+				log.Warnf("can't scan repository %s: %s", repoURL.String(), err.Error())
+			} else {
+				log.Errorf("can't scan repository %s: %s", repoURL.String(), err.Error())
+			}
+
+			continue
+		}
+	}
 }

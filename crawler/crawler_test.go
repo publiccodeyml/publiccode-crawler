@@ -320,8 +320,18 @@ localisation:
   localisationReady: false
   availableLanguages: [en]
 `
-	for _, publisherID := range []string{"main", "other"} {
-		t.Run(publisherID, func(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		publisherID string
+		token       string
+	}{
+		{name: "main without token", publisherID: "main"},
+		{name: "other without token", publisherID: "other"},
+		{name: "main with token", publisherID: "main", token: "github-token"},
+		{name: "other with token", publisherID: "other", token: "github-token"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			viper.Set("GITHUB_TOKEN", tc.token)
 			viper.Set("MAIN_PUBLISHER_ID", "main")
 			viper.Set("SKIP_VITALITY", true)
 			t.Cleanup(viper.Reset)
@@ -371,6 +381,14 @@ localisation:
 			})
 			crawler.newParser = func(config publiccode.ParserConfig) (*publiccode.Parser, error) {
 				assert.Equal(t, server.URL+"/raw/main", config.BaseURL)
+				assert.Equal(t, "github.com", config.Domain.Host)
+				if tc.token == "" {
+					assert.Empty(t, config.Domain.UseTokenFor)
+					assert.Empty(t, config.Domain.BasicAuth)
+				} else {
+					assert.Equal(t, []string{"github.com", "api.github.com", "raw.githubusercontent.com"}, config.Domain.UseTokenFor)
+					assert.Equal(t, []string{tc.token}, config.Domain.BasicAuth)
+				}
 				config.AllowNetworkToPrivateHosts = true
 
 				return publiccode.NewParser(config)
@@ -382,7 +400,7 @@ localisation:
 				Name: "org/repo", URL: *repoURL, CanonicalURL: *repoURL,
 				FileRawURL: server.URL + "/raw/main/publiccode.yml",
 				Headers:    map[string]string{"Authorization": "file-token"},
-				Publisher:  common.Publisher{ID: publisherID},
+				Publisher:  common.Publisher{ID: tc.publisherID},
 			})
 
 			assert.EqualValues(t, 1, downloads.Load())
