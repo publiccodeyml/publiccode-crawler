@@ -88,13 +88,30 @@ type Software struct {
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
+const (
+	apiAttemptTimeout = 30 * time.Second
+
+	// Five attempts of apiAttemptTimeout plus the default backoff fit in
+	// this budget. It also caps Retry-After waits, which retryablehttp
+	// honors without limit.
+	apiOperationTimeout = 3 * time.Minute
+)
+
 func NewClient() APIClient {
+	return newClient(apiAttemptTimeout, apiOperationTimeout)
+}
+
+func newClient(attemptTimeout, operationTimeout time.Duration) APIClient {
 	retryableClient := retryablehttp.NewClient()
 	retryableClient.ErrorHandler = retryablehttp.PassthroughErrorHandler
+	retryableClient.HTTPClient.Timeout = attemptTimeout
+
+	httpClient := retryableClient.StandardClient()
+	httpClient.Timeout = operationTimeout
 
 	return APIClient{
 		baseURL:         viper.GetString("API_BASEURL"),
-		retryableClient: retryableClient.StandardClient(),
+		retryableClient: httpClient,
 		token:           "Bearer " + viper.GetString("API_BEARER_TOKEN"),
 	}
 }
