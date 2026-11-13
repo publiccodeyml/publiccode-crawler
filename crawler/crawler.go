@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -381,7 +382,16 @@ func (c *Crawler) ProcessRepo(repository common.Repository) { //nolint:funlen,go
 		newParser = c.newParser
 	}
 
-	parser, err = newParser(publiccode.ParserConfig{Domain: domain})
+	baseURL, err := url.Parse(repository.FileRawURL)
+	if err != nil {
+		logEntries = append(logEntries, fmt.Sprintf("[%s] invalid publiccode.yml URL: %s", repository.Name, err))
+
+		return
+	}
+
+	baseURL.Path = path.Dir(baseURL.Path)
+
+	parser, err = newParser(publiccode.ParserConfig{Domain: domain, BaseURL: baseURL.String()})
 	if err != nil {
 		logEntries = append(
 			logEntries,
@@ -393,7 +403,7 @@ func (c *Crawler) ProcessRepo(repository common.Repository) { //nolint:funlen,go
 
 	var parsed publiccode.PublicCode
 
-	parsed, err = parser.Parse(repository.FileRawURL)
+	parsed, err = parser.ParseStream(bytes.NewReader(resp.Body))
 
 	valid := true
 
