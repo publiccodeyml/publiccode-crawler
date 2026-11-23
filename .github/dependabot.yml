@@ -23,6 +23,10 @@ updates:
       exclude:
         - "github.com/italia/*"
         - "github.com/publiccodeyml/*"
+    # Indirect modules are linked into the binary too, and scanners flag
+    # their advisories even when the vulnerable code is unreachable.
+    allow:
+      - dependency-type: "all"
     groups:
       go-deps:
         patterns:
